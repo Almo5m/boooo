@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{% block title %}لوحة التحكم{% endblock %}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0b0e17;
+    --bg-soft: #10141f;
+    --surface: #151a29;
+    --surface-2: #1b2133;
+    --border: #262d42;
+    --text: #eef0f6;
+    --text-dim: #93a0bd;
+    --primary: #6d5efc;
+    --primary-2: #8f7dff;
+    --accent: #34d1a5;
+    --danger: #ff5c72;
+    --warn: #ffb648;
+    --radius: 14px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: 'Cairo', 'Segoe UI', Tahoma, sans-serif;
+    background:
+      radial-gradient(1200px 600px at 85% -10%, rgba(109,94,252,0.18), transparent 60%),
+      radial-gradient(900px 500px at -10% 10%, rgba(52,209,165,0.10), transparent 55%),
+      var(--bg);
+    color: var(--text);
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+  }
+
+  /* الشريط الجانبي */
+  .sidebar {
+    width: 240px;
+    flex-shrink: 0;
+    background: linear-gradient(180deg, var(--surface), var(--bg-soft));
+    border-left: 1px solid var(--border);
+    padding: 22px 16px;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: 800;
+    font-size: 16px;
+    color: #fff;
+    padding: 0 8px 22px;
+    margin-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+  }
+  .brand .logo {
+    width: 34px; height: 34px; border-radius: 10px;
+    background: linear-gradient(135deg, var(--primary), var(--accent));
+    display: flex; align-items: center; justify-content: center;
+    font-size: 17px;
+  }
+  nav.nav-links { display: flex; flex-direction: column; gap: 4px; margin-top: 10px; }
+  nav.nav-links a {
+    display: flex; align-items: center; gap: 10px;
+    color: var(--text-dim); text-decoration: none;
+    padding: 10px 12px; border-radius: 10px;
+    font-size: 14.5px; font-weight: 500;
+    transition: all .15s ease;
+  }
+  nav.nav-links a:hover { background: var(--surface-2); color: #fff; }
+  nav.nav-links a.active {
+    background: linear-gradient(135deg, rgba(109,94,252,0.22), rgba(109,94,252,0.06));
+    color: #fff;
+    box-shadow: inset 0 0 0 1px rgba(109,94,252,0.35);
+  }
+  .sidebar-footer { margin-top: auto; padding-top: 16px; border-top: 1px solid var(--border); }
+  .sidebar-footer a { color: var(--danger); text-decoration: none; font-size: 13.5px; font-weight: 600; }
+
+  /* المحتوى */
+  .main { flex: 1; min-width: 0; padding: 30px 34px; }
+  .page-header { margin-bottom: 22px; }
+  .page-header h1 { font-size: 22px; margin: 0 0 4px; color: #fff; font-weight: 800; }
+  .page-header p { margin: 0; color: var(--text-dim); font-size: 13.5px; }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 22px;
+    margin-bottom: 22px;
+    box-shadow: 0 10px 30px -18px rgba(0,0,0,0.6);
+  }
+  .card h3 { margin: 0 0 14px; font-size: 15.5px; color: #fff; font-weight: 700; }
+
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: right; padding: 11px 10px; font-size: 13.5px; }
+  thead th { color: var(--text-dim); font-weight: 600; border-bottom: 1px solid var(--border); font-size: 12.5px; text-transform: uppercase; letter-spacing: .03em; }
+  tbody tr { border-bottom: 1px solid var(--border); }
+  tbody tr:last-child { border-bottom: none; }
+  tbody tr:hover { background: rgba(255,255,255,0.02); }
+
+  label { font-size: 12.5px; color: var(--text-dim); font-weight: 600; display: block; margin-bottom: 6px; }
+  input[type=text], input[type=number], input[type=password], input[type=datetime-local], textarea, select {
+    width: 100%; padding: 11px 13px; margin-bottom: 16px;
+    border-radius: 10px; border: 1px solid var(--border);
+    background: var(--bg-soft); color: var(--text);
+    font-family: inherit; font-size: 14px;
+    transition: border-color .15s ease, box-shadow .15s ease;
+  }
+  input:focus, textarea:focus, select:focus {
+    outline: none; border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(109,94,252,0.18);
+  }
+  input[type=checkbox] { width: auto; margin-left: 6px; }
+
+  button, .btn {
+    background: linear-gradient(135deg, var(--primary), var(--primary-2));
+    color: #fff; border: none; padding: 11px 22px; border-radius: 10px;
+    cursor: pointer; font-size: 14px; font-weight: 700; font-family: inherit;
+    box-shadow: 0 8px 20px -8px rgba(109,94,252,0.55);
+    transition: transform .1s ease, box-shadow .15s ease;
+  }
+  button:hover, .btn:hover { transform: translateY(-1px); box-shadow: 0 10px 24px -8px rgba(109,94,252,0.7); }
+
+  .danger-link { color: var(--danger); text-decoration: none; font-size: 13px; font-weight: 600; }
+  .danger-link:hover { text-decoration: underline; }
+
+  .badge {
+    display: inline-block; padding: 3px 10px; border-radius: 999px;
+    font-size: 11.5px; font-weight: 700;
+  }
+  .badge.active { background: rgba(52,209,165,0.15); color: var(--accent); }
+  .badge.inactive { background: rgba(255,92,114,0.15); color: var(--danger); }
+
+  .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px,1fr)); gap: 14px; }
+  .stat-box {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 12px; padding: 18px;
+    position: relative; overflow: hidden;
+  }
+  .stat-box::before {
+    content: ""; position: absolute; inset: 0;
+    background: linear-gradient(135deg, rgba(109,94,252,0.12), transparent 60%);
+  }
+  .stat-box .num { font-size: 28px; font-weight: 800; color: #fff; position: relative; }
+  .stat-box .label { font-size: 12.5px; color: var(--text-dim); margin-top: 4px; position: relative; }
+
+  code { background: var(--bg-soft); padding: 2px 7px; border-radius: 6px; font-size: 12.5px; color: var(--accent); }
+
+  @media (max-width: 860px) {
+    body { flex-direction: column; }
+    .sidebar { width: 100%; height: auto; position: relative; flex-direction: row; flex-wrap: wrap; }
+    .nav-links { flex-direction: row; flex-wrap: wrap; }
+    .main { padding: 20px; }
+  }
+</style>
+</head>
+<body>
+<aside class="sidebar">
+  <div class="brand">
+    <div class="logo">🎓</div>
+    <span>لوحة تحكم البوت</span>
+  </div>
+  <nav class="nav-links" id="nav-links">
+    <a href="/" data-path="/">📊 الرئيسية</a>
+    <a href="/subjects" data-path="/subjects">📚 المواد</a>
+    <a href="/questions" data-path="/questions">❓ الأسئلة</a>
+    <a href="/exams" data-path="/exams">📝 الاختبارات</a>
+    <a href="/scheduled" data-path="/scheduled">🗓 الجدولة</a>
+    <a href="/settings" data-path="/settings">⚙️ الإعدادات</a>
+  </nav>
+  <div class="sidebar-footer">
+    <a href="/logout">🚪 تسجيل الخروج</a>
+  </div>
+</aside>
+<main class="main">
+{% block content %}{% endblock %}
+</main>
+<script>
+  const path = window.location.pathname;
+  document.querySelectorAll('#nav-links a').forEach(a => {
+    if (a.getAttribute('data-path') === path) a.classList.add('active');
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header">
+  <h1>📊 نظرة عامة</h1>
+  <p>ملخص سريع لحالة الجروب والمحتوى التعليمي</p>
+</div>
+
+<div class="card">
+  <div class="stats-grid">
+    <div class="stat-box"><div class="num">{{ stats.subjects }}</div><div class="label">📚 مادة</div></div>
+    <div class="stat-box"><div class="num">{{ stats.questions }}</div><div class="label">❓ سؤال</div></div>
+    <div class="stat-box"><div class="num">{{ stats.exams }}</div><div class="label">📝 اختبار</div></div>
+    <div class="stat-box"><div class="num">{{ stats.results }}</div><div class="label">🏆 نتيجة مسجلة</div></div>
+    <div class="stat-box"><div class="num">{{ stats.scheduled }}</div><div class="label">🗓 رسالة مجدولة نشطة</div></div>
+  </div>
+</div>
+
+<div class="card">
+  <h3>آخر نتائج الاختبارات</h3>
+  <table>
+    <thead><tr><th>الطالب</th><th>الاختبار</th><th>النتيجة</th><th>التاريخ</th></tr></thead>
+    <tbody>
+    {% for r in recent_results %}
+    <tr>
+      <td>{{ r.user_name }}</td>
+      <td>#{{ r.exam_id }}</td>
+      <td>{{ r.score }}/{{ r.total }}</td>
+      <td style="color:var(--text-dim)">{{ r.finished_at.strftime('%Y-%m-%d %H:%M') }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="4" style="color:var(--text-dim)">لا توجد نتائج بعد.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

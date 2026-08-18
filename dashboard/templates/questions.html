@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header">
+  <h1>❓ بنك الأسئلة</h1>
+  <p>ضيف أسئلة اختيار من متعدد لأي مادة، وهتقدر تجمعها بعدين في اختبار</p>
+</div>
+
+<div class="card">
+  <h3>إضافة سؤال جديد</h3>
+  <form method="post" action="/questions/add">
+    <label>المادة</label>
+    <select name="subject_id" required>
+      {% for s in subjects %}
+      <option value="{{ s.id }}">{{ s.name }}</option>
+      {% endfor %}
+    </select>
+
+    <label>نص السؤال</label>
+    <textarea name="text" rows="2" required></textarea>
+
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:0 16px;">
+      <div>
+        <label>الاختيار الأول</label>
+        <input type="text" name="option1" required>
+      </div>
+      <div>
+        <label>الاختيار الثاني</label>
+        <input type="text" name="option2" required>
+      </div>
+      <div>
+        <label>الاختيار الثالث (اختياري)</label>
+        <input type="text" name="option3">
+      </div>
+      <div>
+        <label>الاختيار الرابع (اختياري)</label>
+        <input type="text" name="option4">
+      </div>
+    </div>
+
+    <label>رقم الإجابة الصحيحة (0 = الأول، 1 = الثاني، ...)</label>
+    <input type="number" name="correct_index" min="0" max="3" required>
+
+    <label>شرح الإجابة (يظهر بعد الحل - اختياري)</label>
+    <textarea name="explanation" rows="2"></textarea>
+
+    <label>مستوى الصعوبة</label>
+    <select name="difficulty">
+      <option value="easy">سهل</option>
+      <option value="medium" selected>متوسط</option>
+      <option value="hard">صعب</option>
+    </select>
+
+    <button type="submit">+ إضافة السؤال</button>
+  </form>
+</div>
+
+<div class="card">
+  <h3>كل الأسئلة ({{ questions|length }})</h3>
+  <table>
+    <thead><tr><th>#</th><th>السؤال</th><th>الاختيارات</th><th>الإجابة</th><th>الصعوبة</th><th></th></tr></thead>
+    <tbody>
+    {% for q in questions %}
+    <tr>
+      <td>{{ q.id }}</td>
+      <td>{{ q.text[:60] }}</td>
+      <td style="color:var(--text-dim)">{{ q.options_list|join(' / ') }}</td>
+      <td><span class="badge active">{{ q.options_list[q.correct_index] }}</span></td>
+      <td>{{ q.difficulty }}</td>
+      <td><a class="danger-link" href="/questions/delete/{{ q.id }}">حذف</a></td>
+    </tr>
+    {% else %}
+    <tr><td colspan="6" style="color:var(--text-dim)">لا توجد أسئلة بعد.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

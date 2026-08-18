@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header">
+  <h1>📝 الاختبارات</h1>
+  <p>اجمع أسئلة من بنك الأسئلة وابني اختبار كامل يتشغل داخل الجروب</p>
+</div>
+
+<div class="card">
+  <h3>إنشاء اختبار جديد</h3>
+  <form method="post" action="/exams/add">
+    <label>عنوان الاختبار</label>
+    <input type="text" name="title" placeholder="مثال: اختبار الفصل الأول - فيزياء" required>
+
+    <label>المادة (اختياري - للتنظيم فقط)</label>
+    <select name="subject_id">
+      <option value="">بدون تحديد</option>
+      {% for s in subjects %}
+      <option value="{{ s.id }}">{{ s.name }}</option>
+      {% endfor %}
+    </select>
+
+    <label>الوقت لكل سؤال (بالثواني)</label>
+    <input type="number" name="time_per_question" value="30" min="5" required>
+
+    <label>اختار الأسئلة</label>
+    <div style="max-height:260px; overflow-y:auto; border:1px solid var(--border); border-radius:10px; padding:14px; background:var(--bg-soft);">
+      {% for q in questions %}
+      <div style="padding:6px 0; border-bottom:1px solid var(--border);">
+        <label style="display:inline-flex; align-items:center; margin:0; font-weight:400; color:var(--text);">
+          <input type="checkbox" name="question_ids" value="{{ q.id }}">
+          <span style="color:var(--text-dim); margin-left:6px;">#{{ q.id }}</span>&nbsp;{{ q.text[:70] }}
+        </label>
+      </div>
+      {% else %}
+      <p style="color:var(--text-dim); margin:0;">مفيش أسئلة متاحة، ضيف أسئلة الأول من صفحة الأسئلة.</p>
+      {% endfor %}
+    </div>
+
+    <button type="submit" style="margin-top:16px;">+ إنشاء الاختبار</button>
+  </form>
+</div>
+
+<div class="card">
+  <h3>الاختبارات المتاحة</h3>
+  <table>
+    <thead><tr><th>#</th><th>العنوان</th><th>عدد الأسئلة</th><th>ثانية/سؤال</th><th></th></tr></thead>
+    <tbody>
+    {% for e in exams %}
+    <tr>
+      <td>{{ e.id }}</td>
+      <td>{{ e.title }}</td>
+      <td>{{ (e.question_ids | fromjson | length) if e.question_ids else 0 }}</td>
+      <td>{{ e.time_per_question }}</td>
+      <td><a class="danger-link" href="/exams/delete/{{ e.id }}">حذف</a></td>
+    </tr>
+    {% else %}
+    <tr><td colspan="5" style="color:var(--text-dim)">لا توجد اختبارات بعد.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p style="color:var(--text-dim); font-size:13px; margin-top:14px;">
+    لبدء الاختبار داخل الجروب اكتب: <code>ابدأ اختبار [رقم]</code> من أي أدمن.
+  </p>
+</div>
+{% endblock %}

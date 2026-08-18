@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header">
+  <h1>🗓 جدولة الرسائل</h1>
+  <p>ابعت رسالة مرة واحدة في وقت محدد، أو خليها متكررة يوميًا أو أسبوعيًا</p>
+</div>
+
+<div class="card">
+  <h3>إضافة رسالة مجدولة</h3>
+  <form method="post" action="/scheduled/add">
+    <label>آيدي الجروب (رقم سالب زي -100123456789)</label>
+    <input type="text" name="chat_id" required>
+
+    <label>محتوى الرسالة</label>
+    <textarea name="content" rows="3" required></textarea>
+
+    <label>نوع الجدولة</label>
+    <select name="mode" id="mode" onchange="toggleMode()">
+      <option value="once">مرة واحدة في وقت محدد</option>
+      <option value="recurring">متكررة (يومية/أسبوعية)</option>
+    </select>
+
+    <div id="once-fields">
+      <label>وقت الإرسال</label>
+      <input type="datetime-local" name="run_at">
+    </div>
+
+    <div id="recurring-fields" style="display:none;">
+      <label>صيغة Cron (دقيقة ساعة يوم شهر يوم_أسبوع)</label>
+      <input type="text" name="cron_expr" placeholder="مثال: 0 18 * * *  — كل يوم الساعة ٦ مساءً">
+    </div>
+
+    <label style="display:flex; align-items:center; font-weight:400; color:var(--text);">
+      <input type="checkbox" name="pin" value="true"> تثبيت الرسالة بعد الإرسال
+    </label>
+
+    <button type="submit" style="margin-top:6px;">+ جدولة الرسالة</button>
+  </form>
+</div>
+
+<div class="card">
+  <h3>الرسائل المجدولة</h3>
+  <table>
+    <thead><tr><th>#</th><th>الجروب</th><th>المحتوى</th><th>الموعد</th><th>الحالة</th><th></th></tr></thead>
+    <tbody>
+    {% for m in items %}
+    <tr>
+      <td>{{ m.id }}</td>
+      <td style="color:var(--text-dim)">{{ m.chat_id }}</td>
+      <td>{{ m.content[:40] }}</td>
+      <td style="color:var(--text-dim)">{{ m.cron_expr or m.run_at }}</td>
+      <td><span class="badge {{ 'active' if m.is_active else 'inactive' }}">{{ "نشطة" if m.is_active else "متوقفة" }}</span></td>
+      <td>{% if m.is_active %}<a class="danger-link" href="/scheduled/delete/{{ m.id }}">إلغاء</a>{% endif %}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="6" style="color:var(--text-dim)">لا توجد رسائل مجدولة.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<script>
+function toggleMode() {
+  const mode = document.getElementById('mode').value;
+  document.getElementById('once-fields').style.display = mode === 'once' ? 'block' : 'none';
+  document.getElementById('recurring-fields').style.display = mode === 'recurring' ? 'block' : 'none';
+}
+</script>
+{% endblock %}
