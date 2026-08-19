@@ -83,7 +83,12 @@ async def get_ai_reply(chat_id: int, user_name: str, user_message: str) -> str:
             resp.raise_for_status()
             data = resp.json()
             reply = data["choices"][0]["message"]["content"].strip()
-    except Exception:
+    except httpx.HTTPStatusError as e:
+        # بنطبع تفاصيل الخطأ في الـ logs عشان تقدر تشخصه من Railway
+        print(f"[AI ERROR] {AI_PROVIDER} رجع status {e.response.status_code}: {e.response.text[:500]}")
+        return "معلش، حصل خطأ وأنا بحاول أرد 😅 جرب تاني كمان شوية."
+    except Exception as e:
+        print(f"[AI ERROR] {AI_PROVIDER}: {type(e).__name__}: {e}")
         return "معلش، حصل خطأ وأنا بحاول أرد 😅 جرب تاني كمان شوية."
 
     history.append(("user", f"{user_name}: {user_message}"))
