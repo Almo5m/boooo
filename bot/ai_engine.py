@@ -2,11 +2,36 @@ import os
 import httpx
 from collections import defaultdict, deque
 
-GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
-GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
 BOT_PERSONA_NAME = os.getenv("BOT_PERSONA_NAME", "مستر روبوت")
 
-GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
+# ---- إعدادات مزوّد الذكاء الاصطناعي ----
+# غيّر AI_PROVIDER في الـ Variables لـ: groq | openrouter | gemini
+AI_PROVIDER = os.getenv("AI_PROVIDER", "groq").lower().strip()
+
+PROVIDERS = {
+    "groq": {
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "key_env": "GROQ_API_KEY",
+        "default_model": "llama-3.3-70b-versatile",
+    },
+    "openrouter": {
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "key_env": "OPENROUTER_API_KEY",
+        # موديل مجاني على OpenRouter
+        "default_model": "meta-llama/llama-3.1-8b-instruct:free",
+    },
+    "gemini": {
+        # جوجل بتوفر endpoint متوافق مع صيغة OpenAI
+        "url": "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+        "key_env": "GEMINI_API_KEY",
+        "default_model": "gemini-1.5-flash",
+    },
+}
+
+_config = PROVIDERS.get(AI_PROVIDER, PROVIDERS["groq"])
+API_URL = _config["url"]
+API_KEY = os.getenv(_config["key_env"], "")
+MODEL = os.getenv("AI_MODEL", _config["default_model"])
 
 # ذاكرة محادثة بسيطة في الذاكرة (آخر ٦ رسائل لكل جروب) - بتتصفر لما البوت يعيد التشغيل
 _history = defaultdict(lambda: deque(maxlen=6))
@@ -25,8 +50,11 @@ SYSTEM_PROMPT = f"""إنت اسمك "{BOT_PERSONA_NAME}"، عضو حقيقي ج�
 
 
 async def get_ai_reply(chat_id: int, user_name: str, user_message: str) -> str:
-    if not GROQ_API_KEY:
-        return "لسه مفعلتش خاصية الدردشة الذكية، ضيف GROQ_API_KEY في إعدادات المشروع الأول 🙏"
+    if not API_KEY:
+        return (
+            f"لسه مفعلتش خاصية الدردشة الذكية 🙏\n"
+            f"ضيف {_config['key_env']} في Variables على Railway (المزوّد الحالي: {AI_PROVIDER})."
+        )
 
     history = _history[chat_id]
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
@@ -34,13 +62,19 @@ async def get_ai_reply(chat_id: int, user_name: str, user_message: str) -> str:
         messages.append({"role": role, "content": content})
     messages.append({"role": "user", "content": f"{user_name}: {user_message}"})
 
+    headers = {"Authorization": f"Bearer {API_KEY}"}
+    if AI_PROVIDER == "openrouter":
+        # OpenRouter بيحب تحدد مصدر الطلب (اختياري بس بيحسن حدود الاستخدام المجاني)
+        headers["HTTP-Referer"] = "https://railway.app"
+        headers["X-Title"] = BOT_PERSONA_NAME
+
     try:
         async with httpx.AsyncClient(timeout=20) as client:
             resp = await client.post(
-                GROQ_URL,
-                headers={"Authorization": f"Bearer {GROQ_API_KEY}"},
+                API_URL,
+                headers=headers,
                 json={
-                    "model": GROQ_MODEL,
+                    "model": MODEL,
                     "messages": messages,
                     "temperature": 0.8,
                     "max_tokens": 400,
