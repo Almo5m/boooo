@@ -19,7 +19,7 @@ CTRL_WORDS = ADDFILTER_WORDS | DELFILTER_WORDS | SAVE_WORDS | NOTES_WORDS | LOCK
 
 
 def is_filter_command(message: Message) -> bool:
-    if not message.text:
+    if not message.text or message.chat.type == "private":
         return False
     cmd, _ = match_command(message.text, CTRL_WORDS)
     return cmd is not None
@@ -114,7 +114,7 @@ async def filter_control_router(message: Message):
 
 
 # هاندلر عام لأي رسالة نصية عادية عشان يطبق القفل ويرد على الملاحظات والفلاتر
-@router.message(F.text)
+@router.message(F.text, F.chat.type != "private")
 async def handle_text(message: Message):
     session = get_session()
     try:
@@ -150,7 +150,7 @@ async def handle_text(message: Message):
         session.close()
 
 
-@router.message(F.forward_date)
+@router.message(F.forward_date, F.chat.type != "private")
 async def handle_forward(message: Message):
     session = get_session()
     try:
@@ -164,7 +164,7 @@ async def handle_forward(message: Message):
         session.close()
 
 
-@router.message(F.sticker)
+@router.message(F.sticker, F.chat.type != "private")
 async def handle_sticker(message: Message):
     session = get_session()
     try:

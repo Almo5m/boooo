@@ -15,6 +15,17 @@
   </div>
 </div>
 
+<div style="display:grid; grid-template-columns:1fr 1fr; gap:22px;">
+  <div class="card">
+    <h3>عدد الأسئلة لكل مادة</h3>
+    <div class="chart-wrap"><canvas id="subjectsChart"></canvas></div>
+  </div>
+  <div class="card">
+    <h3>اتجاه آخر النتائج (%)</h3>
+    <div class="chart-wrap"><canvas id="trendChart"></canvas></div>
+  </div>
+</div>
+
 <div class="card">
   <h3>آخر نتائج الاختبارات</h3>
   <table>
@@ -33,4 +44,54 @@
     </tbody>
   </table>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+<script>
+  const subjectsData = {{ subjects_chart | safe }};
+  const trendLabels = {{ trend_labels | safe }};
+  const trendValues = {{ trend_values | safe }};
+
+  Chart.defaults.font.family = "'Cairo', sans-serif";
+  Chart.defaults.color = "#7a839c";
+
+  new Chart(document.getElementById('subjectsChart'), {
+    type: 'bar',
+    data: {
+      labels: subjectsData.labels,
+      datasets: [{
+        data: subjectsData.values,
+        backgroundColor: 'rgba(109,94,252,0.65)',
+        borderRadius: 8,
+        maxBarThickness: 40,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: { y: { beginAtZero: true, grid: { color: '#e7eaf3' } }, x: { grid: { display: false } } },
+      animation: { duration: 700, easing: 'easeOutQuart' },
+    }
+  });
+
+  new Chart(document.getElementById('trendChart'), {
+    type: 'line',
+    data: {
+      labels: trendLabels,
+      datasets: [{
+        data: trendValues,
+        borderColor: '#17b892',
+        backgroundColor: 'rgba(23,184,146,0.12)',
+        fill: true, tension: 0.35, pointRadius: 4, pointBackgroundColor: '#17b892',
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: { y: { min: 0, max: 100, grid: { color: '#e7eaf3' } }, x: { grid: { display: false } } },
+      animation: { duration: 700, easing: 'easeOutQuart' },
+    }
+  });
+</script>
 {% endblock %}

@@ -1,6 +1,6 @@
 import json
 import asyncio
-from aiogram import Router
+from aiogram import Router, Bot
 from aiogram.types import Message
 from database import get_session, Exam, Question, ExamResult
 from bot.handlers.arabic_commands import is_group_admin, match_command
@@ -16,8 +16,71 @@ MY_RESULTS_WORDS = {"نتايجي", "نتائجي"}
 QUIZ_COMMAND_WORDS = START_EXAM_WORDS | MY_RESULTS_WORDS
 
 
+async def run_exam(bot: Bot, chat_id: int, exam_id: int) -> str:
+    """
+    بتشغل الاختبار فعليًا في أي جروب - مستخدمة من الأمر العربي وكمان من لوحة تحكم الخاص.
+    بترجع رسالة الحالة النهائية (نجاح أو سبب الفشل).
+    """
+    session = get_session()
+    try:
+        exam = session.query(Exam).filter_by(id=exam_id).first()
+        if not exam:
+            return "❌ مفيش اختبار بالرقم ده."
+        q_ids = json.loads(exam.question_ids)
+        questions = session.query(Question).filter(Question.id.in_(q_ids)).all()
+        q_map = {q.id: q for q in questions}
+        ordered = [q_map[i] for i in q_ids if i in q_map]
+
+        if not ordered:
+            return "الاختبار ده فاضي من الأسئلة."
+
+        await bot.send_message(chat_id, f"📝 <b>بدء اختبار: {exam.title}</b>\nعدد الأسئلة: {len(ordered)}\nحظ سعيد للجميع! 🍀")
+
+        key = (chat_id, exam.id)
+        LIVE_SCORES[key] = {}
+
+        for q in ordered:
+            options = json.loads(q.options)
+            poll = await bot.send_poll(
+                chat_id=chat_id,
+                question=q.text[:290],
+                options=[o[:100] for o in options],
+                type="quiz",
+                correct_option_id=q.correct_index,
+                is_anonymous=False,
+                open_period=exam.time_per_question,
+                explanation=(q.explanation or "")[:190],
+            )
+            ACTIVE_POLLS[poll.poll.id] = {
+                "chat_id": chat_id,
+                "exam_id": exam.id,
+                "correct_index": q.correct_index,
+            }
+            await asyncio.sleep(exam.time_per_question + 1)
+
+        await bot.send_message(chat_id, "✅ خلص الاختبار! هعرض النتائج دلوقتي 👇")
+        scores = LIVE_SCORES.pop(key, {})
+        if not scores:
+            await bot.send_message(chat_id, "محدش جاوب على أي سؤال 😅")
+            return "تم إنهاء الاختبار (محدش جاوب)."
+
+        ranked = sorted(scores.values(), key=lambda x: x["score"], reverse=True)
+        result_text = f"🏆 <b>نتائج اختبار: {exam.title}</b>\n\n"
+        for i, r in enumerate(ranked, 1):
+            result_text += f"{i}. {r['name']}: {r['score']}/{len(ordered)}\n"
+            session.add(ExamResult(
+                exam_id=exam.id, chat_id=chat_id, user_id=r["user_id"],
+                user_name=r["name"], score=r["score"], total=len(ordered),
+            ))
+        session.commit()
+        await bot.send_message(chat_id, result_text)
+        return "✅ خلص الاختبار وتم عرض النتائج."
+    finally:
+        session.close()
+
+
 def is_quiz_command(message: Message) -> bool:
-    if not message.text:
+    if not message.text or message.chat.type == "private":
         return False
     cmd, _ = match_command(message.text, QUIZ_COMMAND_WORDS)
     return cmd is not None
@@ -35,64 +98,9 @@ async def quiz_router(message: Message):
         if not arg.isdigit():
             await message.reply("استخدم: ابدأ اختبار [رقم_الاختبار] (شوف الأرقام من لوحة التحكم)")
             return
-        exam_id = int(arg)
-        session = get_session()
-        try:
-            exam = session.query(Exam).filter_by(id=exam_id).first()
-            if not exam:
-                await message.reply("❌ مفيش اختبار بالرقم ده.")
-                return
-            q_ids = json.loads(exam.question_ids)
-            questions = session.query(Question).filter(Question.id.in_(q_ids)).all()
-            q_map = {q.id: q for q in questions}
-            ordered = [q_map[i] for i in q_ids if i in q_map]
-
-            if not ordered:
-                await message.reply("الاختبار ده فاضي من الأسئلة.")
-                return
-
-            await message.answer(f"📝 <b>بدء اختبار: {exam.title}</b>\nعدد الأسئلة: {len(ordered)}\nحظ سعيد للجميع! 🍀")
-
-            key = (message.chat.id, exam.id)
-            LIVE_SCORES[key] = {}
-
-            for q in ordered:
-                options = json.loads(q.options)
-                poll = await message.bot.send_poll(
-                    chat_id=message.chat.id,
-                    question=q.text[:290],
-                    options=[o[:100] for o in options],
-                    type="quiz",
-                    correct_option_id=q.correct_index,
-                    is_anonymous=False,
-                    open_period=exam.time_per_question,
-                    explanation=(q.explanation or "")[:190],
-                )
-                ACTIVE_POLLS[poll.poll.id] = {
-                    "chat_id": message.chat.id,
-                    "exam_id": exam.id,
-                    "correct_index": q.correct_index,
-                }
-                await asyncio.sleep(exam.time_per_question + 1)
-
-            await message.answer("✅ خلص الاختبار! هعرض النتائج دلوقتي 👇")
-            scores = LIVE_SCORES.pop(key, {})
-            if not scores:
-                await message.answer("محدش جاوب على أي سؤال 😅")
-                return
-
-            ranked = sorted(scores.values(), key=lambda x: x["score"], reverse=True)
-            result_text = f"🏆 <b>نتائج اختبار: {exam.title}</b>\n\n"
-            for i, r in enumerate(ranked, 1):
-                result_text += f"{i}. {r['name']}: {r['score']}/{len(ordered)}\n"
-                session.add(ExamResult(
-                    exam_id=exam.id, chat_id=message.chat.id, user_id=r["user_id"],
-                    user_name=r["name"], score=r["score"], total=len(ordered),
-                ))
-            session.commit()
-            await message.answer(result_text)
-        finally:
-            session.close()
+        result = await run_exam(message.bot, message.chat.id, int(arg))
+        if result.startswith("❌") or result.startswith("الاختبار"):
+            await message.reply(result)
         return
 
     if cmd in MY_RESULTS_WORDS:

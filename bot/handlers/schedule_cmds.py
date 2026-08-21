@@ -11,7 +11,7 @@ SCHEDULE_CMD_WORDS = LIST_WORDS | CANCEL_WORDS
 
 
 def is_schedule_command(message: Message) -> bool:
-    if not message.text:
+    if not message.text or message.chat.type == "private":
         return False
     cmd, _ = match_command(message.text, SCHEDULE_CMD_WORDS)
     return cmd is not None

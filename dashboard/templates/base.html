@@ -8,26 +8,27 @@
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg: #0b0e17;
-    --bg-soft: #10141f;
-    --surface: #151a29;
-    --surface-2: #1b2133;
-    --border: #262d42;
-    --text: #eef0f6;
-    --text-dim: #93a0bd;
+    --bg: #f4f6fb;
+    --bg-soft: #ffffff;
+    --surface: #ffffff;
+    --surface-2: #f0f2fa;
+    --border: #e7eaf3;
+    --text: #1c2333;
+    --text-dim: #7a839c;
     --primary: #6d5efc;
     --primary-2: #8f7dff;
-    --accent: #34d1a5;
-    --danger: #ff5c72;
-    --warn: #ffb648;
-    --radius: 14px;
+    --accent: #17b892;
+    --danger: #ef4763;
+    --warn: #f5a623;
+    --radius: 16px;
   }
   * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
   body {
     font-family: 'Cairo', 'Segoe UI', Tahoma, sans-serif;
     background:
-      radial-gradient(1200px 600px at 85% -10%, rgba(109,94,252,0.18), transparent 60%),
-      radial-gradient(900px 500px at -10% 10%, rgba(52,209,165,0.10), transparent 55%),
+      radial-gradient(1100px 550px at 90% -10%, rgba(109,94,252,0.10), transparent 60%),
+      radial-gradient(900px 500px at -10% 15%, rgba(23,184,146,0.08), transparent 55%),
       var(--bg);
     color: var(--text);
     margin: 0;
@@ -39,7 +40,7 @@
   .sidebar {
     width: 240px;
     flex-shrink: 0;
-    background: linear-gradient(180deg, var(--surface), var(--bg-soft));
+    background: var(--surface);
     border-left: 1px solid var(--border);
     padding: 22px 16px;
     position: sticky;
@@ -47,6 +48,7 @@
     height: 100vh;
     display: flex;
     flex-direction: column;
+    box-shadow: 4px 0 24px -18px rgba(30,40,80,0.15);
   }
   .brand {
     display: flex;
@@ -54,38 +56,42 @@
     gap: 10px;
     font-weight: 800;
     font-size: 16px;
-    color: #fff;
+    color: var(--text);
     padding: 0 8px 22px;
     margin-bottom: 8px;
     border-bottom: 1px solid var(--border);
   }
   .brand .logo {
-    width: 34px; height: 34px; border-radius: 10px;
+    width: 34px; height: 34px; border-radius: 11px;
     background: linear-gradient(135deg, var(--primary), var(--accent));
     display: flex; align-items: center; justify-content: center;
     font-size: 17px;
+    box-shadow: 0 6px 16px -6px rgba(109,94,252,0.55);
   }
   nav.nav-links { display: flex; flex-direction: column; gap: 4px; margin-top: 10px; }
   nav.nav-links a {
     display: flex; align-items: center; gap: 10px;
     color: var(--text-dim); text-decoration: none;
-    padding: 10px 12px; border-radius: 10px;
-    font-size: 14.5px; font-weight: 500;
-    transition: all .15s ease;
+    padding: 10px 12px; border-radius: 11px;
+    font-size: 14.5px; font-weight: 600;
+    transition: background .18s ease, color .18s ease, transform .12s ease;
   }
-  nav.nav-links a:hover { background: var(--surface-2); color: #fff; }
+  nav.nav-links a:hover { background: var(--surface-2); color: var(--text); transform: translateX(-2px); }
   nav.nav-links a.active {
-    background: linear-gradient(135deg, rgba(109,94,252,0.22), rgba(109,94,252,0.06));
-    color: #fff;
-    box-shadow: inset 0 0 0 1px rgba(109,94,252,0.35);
+    background: linear-gradient(135deg, rgba(109,94,252,0.14), rgba(23,184,146,0.08));
+    color: var(--primary);
+    box-shadow: inset 0 0 0 1px rgba(109,94,252,0.25);
   }
   .sidebar-footer { margin-top: auto; padding-top: 16px; border-top: 1px solid var(--border); }
-  .sidebar-footer a { color: var(--danger); text-decoration: none; font-size: 13.5px; font-weight: 600; }
+  .sidebar-footer a { color: var(--danger); text-decoration: none; font-size: 13.5px; font-weight: 700; transition: opacity .15s ease; }
+  .sidebar-footer a:hover { opacity: .7; }
 
   /* المحتوى */
-  .main { flex: 1; min-width: 0; padding: 30px 34px; }
+  .main { flex: 1; min-width: 0; padding: 30px 34px; animation: fadeIn .4s ease; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+
   .page-header { margin-bottom: 22px; }
-  .page-header h1 { font-size: 22px; margin: 0 0 4px; color: #fff; font-weight: 800; }
+  .page-header h1 { font-size: 23px; margin: 0 0 4px; color: var(--text); font-weight: 800; }
   .page-header p { margin: 0; color: var(--text-dim); font-size: 13.5px; }
 
   .card {
@@ -94,18 +100,21 @@
     border-radius: var(--radius);
     padding: 22px;
     margin-bottom: 22px;
-    box-shadow: 0 10px 30px -18px rgba(0,0,0,0.6);
+    box-shadow: 0 12px 32px -22px rgba(30,40,80,0.22);
+    transition: box-shadow .2s ease, transform .2s ease;
+    animation: fadeIn .45s ease;
   }
-  .card h3 { margin: 0 0 14px; font-size: 15.5px; color: #fff; font-weight: 700; }
+  .card:hover { box-shadow: 0 16px 40px -20px rgba(30,40,80,0.28); }
+  .card h3 { margin: 0 0 14px; font-size: 15.5px; color: var(--text); font-weight: 700; }
 
   table { width: 100%; border-collapse: collapse; }
   th, td { text-align: right; padding: 11px 10px; font-size: 13.5px; }
-  thead th { color: var(--text-dim); font-weight: 600; border-bottom: 1px solid var(--border); font-size: 12.5px; text-transform: uppercase; letter-spacing: .03em; }
-  tbody tr { border-bottom: 1px solid var(--border); }
+  thead th { color: var(--text-dim); font-weight: 700; border-bottom: 1px solid var(--border); font-size: 12.5px; text-transform: uppercase; letter-spacing: .03em; }
+  tbody tr { border-bottom: 1px solid var(--border); transition: background .15s ease; }
   tbody tr:last-child { border-bottom: none; }
-  tbody tr:hover { background: rgba(255,255,255,0.02); }
+  tbody tr:hover { background: var(--surface-2); }
 
-  label { font-size: 12.5px; color: var(--text-dim); font-weight: 600; display: block; margin-bottom: 6px; }
+  label { font-size: 12.5px; color: var(--text-dim); font-weight: 700; display: block; margin-bottom: 6px; }
   input[type=text], input[type=number], input[type=password], input[type=datetime-local], textarea, select {
     width: 100%; padding: 11px 13px; margin-bottom: 16px;
     border-radius: 10px; border: 1px solid var(--border);
@@ -115,44 +124,49 @@
   }
   input:focus, textarea:focus, select:focus {
     outline: none; border-color: var(--primary);
-    box-shadow: 0 0 0 3px rgba(109,94,252,0.18);
+    box-shadow: 0 0 0 3px rgba(109,94,252,0.14);
   }
   input[type=checkbox] { width: auto; margin-left: 6px; }
 
   button, .btn {
     background: linear-gradient(135deg, var(--primary), var(--primary-2));
-    color: #fff; border: none; padding: 11px 22px; border-radius: 10px;
+    color: #fff; border: none; padding: 11px 22px; border-radius: 11px;
     cursor: pointer; font-size: 14px; font-weight: 700; font-family: inherit;
-    box-shadow: 0 8px 20px -8px rgba(109,94,252,0.55);
-    transition: transform .1s ease, box-shadow .15s ease;
+    box-shadow: 0 10px 22px -10px rgba(109,94,252,0.55);
+    transition: transform .12s ease, box-shadow .15s ease;
   }
-  button:hover, .btn:hover { transform: translateY(-1px); box-shadow: 0 10px 24px -8px rgba(109,94,252,0.7); }
+  button:hover, .btn:hover { transform: translateY(-2px); box-shadow: 0 14px 26px -10px rgba(109,94,252,0.65); }
+  button:active, .btn:active { transform: translateY(0); }
 
-  .danger-link { color: var(--danger); text-decoration: none; font-size: 13px; font-weight: 600; }
-  .danger-link:hover { text-decoration: underline; }
+  .danger-link { color: var(--danger); text-decoration: none; font-size: 13px; font-weight: 700; transition: opacity .15s ease; }
+  .danger-link:hover { opacity: .7; }
 
   .badge {
     display: inline-block; padding: 3px 10px; border-radius: 999px;
-    font-size: 11.5px; font-weight: 700;
+    font-size: 11.5px; font-weight: 800;
   }
-  .badge.active { background: rgba(52,209,165,0.15); color: var(--accent); }
-  .badge.inactive { background: rgba(255,92,114,0.15); color: var(--danger); }
+  .badge.active { background: rgba(23,184,146,0.12); color: var(--accent); }
+  .badge.inactive { background: rgba(239,71,99,0.12); color: var(--danger); }
 
   .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px,1fr)); gap: 14px; }
   .stat-box {
     background: var(--surface-2);
     border: 1px solid var(--border);
-    border-radius: 12px; padding: 18px;
+    border-radius: 13px; padding: 18px;
     position: relative; overflow: hidden;
+    transition: transform .18s ease;
   }
+  .stat-box:hover { transform: translateY(-3px); }
   .stat-box::before {
     content: ""; position: absolute; inset: 0;
-    background: linear-gradient(135deg, rgba(109,94,252,0.12), transparent 60%);
+    background: linear-gradient(135deg, rgba(109,94,252,0.08), transparent 60%);
   }
-  .stat-box .num { font-size: 28px; font-weight: 800; color: #fff; position: relative; }
+  .stat-box .num { font-size: 28px; font-weight: 800; color: var(--text); position: relative; }
   .stat-box .label { font-size: 12.5px; color: var(--text-dim); margin-top: 4px; position: relative; }
 
-  code { background: var(--bg-soft); padding: 2px 7px; border-radius: 6px; font-size: 12.5px; color: var(--accent); }
+  code { background: var(--surface-2); padding: 2px 7px; border-radius: 6px; font-size: 12.5px; color: var(--primary); }
+
+  .chart-wrap { position: relative; height: 260px; }
 
   @media (max-width: 860px) {
     body { flex-direction: column; }
@@ -174,6 +188,7 @@
     <a href="/questions" data-path="/questions">❓ الأسئلة</a>
     <a href="/exams" data-path="/exams">📝 الاختبارات</a>
     <a href="/scheduled" data-path="/scheduled">🗓 الجدولة</a>
+    <a href="/admins" data-path="/admins">👥 المشرفين</a>
     <a href="/settings" data-path="/settings">⚙️ الإعدادات</a>
   </nav>
   <div class="sidebar-footer">
@@ -189,5 +204,6 @@
     if (a.getAttribute('data-path') === path) a.classList.add('active');
   });
 </script>
+{% block scripts %}{% endblock %}
 </body>
 </html>

@@ -11,42 +11,48 @@
   body {
     font-family: 'Cairo', 'Segoe UI', Tahoma, sans-serif;
     background:
-      radial-gradient(1000px 600px at 80% -10%, rgba(109,94,252,0.25), transparent 60%),
-      radial-gradient(800px 500px at 0% 110%, rgba(52,209,165,0.15), transparent 55%),
-      #0b0e17;
-    color: #eef0f6;
+      radial-gradient(1000px 600px at 80% -10%, rgba(109,94,252,0.14), transparent 60%),
+      radial-gradient(800px 500px at 0% 110%, rgba(23,184,146,0.10), transparent 55%),
+      #f4f6fb;
+    color: #1c2333;
     display: flex; align-items: center; justify-content: center;
     height: 100vh; margin: 0;
   }
   .box {
-    background: #151a29;
-    border: 1px solid #262d42;
+    background: #fff;
+    border: 1px solid #e7eaf3;
     padding: 40px 34px;
-    border-radius: 18px;
+    border-radius: 20px;
     width: 340px;
-    box-shadow: 0 30px 60px -25px rgba(0,0,0,0.7);
+    box-shadow: 0 30px 60px -30px rgba(30,40,80,0.25);
+    animation: pop .35s ease;
   }
+  @keyframes pop { from { opacity:0; transform: translateY(10px) scale(.98); } to { opacity:1; transform: translateY(0) scale(1); } }
   .logo {
-    width: 52px; height: 52px; border-radius: 14px; margin: 0 auto 16px;
-    background: linear-gradient(135deg, #6d5efc, #34d1a5);
+    width: 52px; height: 52px; border-radius: 15px; margin: 0 auto 16px;
+    background: linear-gradient(135deg, #6d5efc, #17b892);
     display: flex; align-items: center; justify-content: center; font-size: 26px;
+    box-shadow: 0 12px 26px -10px rgba(109,94,252,0.55);
   }
-  h2 { text-align: center; margin: 0 0 4px; font-size: 18px; font-weight: 800; color: #fff; }
-  p.sub { text-align: center; color: #93a0bd; font-size: 13px; margin: 0 0 26px; }
-  label { font-size: 12.5px; color: #93a0bd; font-weight: 600; display: block; margin-bottom: 6px; }
+  h2 { text-align: center; margin: 0 0 4px; font-size: 18px; font-weight: 800; color: #1c2333; }
+  p.sub { text-align: center; color: #7a839c; font-size: 13px; margin: 0 0 26px; }
+  label { font-size: 12.5px; color: #7a839c; font-weight: 700; display: block; margin-bottom: 6px; }
   input {
     width: 100%; padding: 12px 14px; margin-bottom: 16px;
-    border-radius: 10px; border: 1px solid #262d42;
-    background: #0b0e17; color: #fff; font-family: inherit; font-size: 14px;
+    border-radius: 11px; border: 1px solid #e7eaf3;
+    background: #f9fafd; color: #1c2333; font-family: inherit; font-size: 14px;
+    transition: border-color .15s ease, box-shadow .15s ease;
   }
-  input:focus { outline: none; border-color: #6d5efc; box-shadow: 0 0 0 3px rgba(109,94,252,0.2); }
+  input:focus { outline: none; border-color: #6d5efc; box-shadow: 0 0 0 3px rgba(109,94,252,0.14); }
   button {
     width: 100%; padding: 12px; font-weight: 700; font-size: 14.5px;
     background: linear-gradient(135deg, #6d5efc, #8f7dff);
-    color: #fff; border: none; border-radius: 10px; margin-top: 6px; cursor: pointer;
-    box-shadow: 0 10px 24px -10px rgba(109,94,252,0.7);
+    color: #fff; border: none; border-radius: 11px; margin-top: 6px; cursor: pointer;
+    box-shadow: 0 12px 24px -10px rgba(109,94,252,0.55);
+    transition: transform .12s ease;
   }
-  .error { color: #ff5c72; text-align: center; font-size: 13px; margin-bottom: 14px; font-weight: 600; }
+  button:hover { transform: translateY(-2px); }
+  .error { color: #ef4763; text-align: center; font-size: 13px; margin-bottom: 14px; font-weight: 700; }
 </style>
 </head>
 <body>

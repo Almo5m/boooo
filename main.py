@@ -5,15 +5,19 @@ from dotenv import load_dotenv
 
 from database import init_db
 from bot.bot import bot, dp
-from bot.handlers import general, welcome, arabic_commands, quiz, schedule_cmds, ai_chat, filters
+from bot.handlers import general, welcome, dm_control, arabic_commands, quiz, schedule_cmds, ai_chat, filters
 from dashboard.app import app as dashboard_app, set_bot_instance
 from scheduler import scheduler, load_all_scheduled
 
 load_dotenv()
 
-# الترتيب مهم: الأوامر المحددة الأول، وبعدين الذكاء الاصطناعي، وفي الآخر الفلاتر العامة (بتمسك أي رسالة نصية)
+# الترتيب مهم:
+# 1) عام (start/help للجروب)  2) الترحيب  3) لوحة تحكم الخاص (لها أولوية في الخاص)
+# 4) أوامر الجروب العربي  5) الاختبارات  6) الجدولة
+# 7) الذكاء الاصطناعي (بيمسك أي حاجة متردش عليها حاجة تانية)  8) الفلاتر العامة (آخر حاجة)
 dp.include_router(general.router)
 dp.include_router(welcome.router)
+dp.include_router(dm_control.router)
 dp.include_router(arabic_commands.router)
 dp.include_router(quiz.router)
 dp.include_router(schedule_cmds.router)

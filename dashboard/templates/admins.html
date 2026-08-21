@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header">
+  <h1>👥 المشرفين</h1>
+  <p>التحكم في البوت (أوامر الجروب، لوحة الخاص) مقصور على المالك والمشرفين المضافين هنا بس</p>
+</div>
+
+<div class="card">
+  <h3>المالك (من متغيرات البيئة)</h3>
+  <p style="color:var(--text-dim); font-size:13.5px;">آيدي المالك: <code>{{ owner_ids }}</code> — للتغيير عدّل <code>OWNER_IDS</code> في Variables على Railway.</p>
+</div>
+
+<div class="card">
+  <h3>إضافة مشرف جديد</h3>
+  <form method="post" action="/admins/add">
+    <label>آيدي التليجرام (رقم - هتلاقيه من @userinfobot)</label>
+    <input type="text" name="user_id" required>
+    <label>الاسم (اختياري، للتوضيح بس)</label>
+    <input type="text" name="name">
+    <button type="submit">+ إضافة مشرف</button>
+  </form>
+</div>
+
+<div class="card">
+  <h3>المشرفين المضافين ({{ admins|length }})</h3>
+  <table>
+    <thead><tr><th>الاسم</th><th>الآيدي</th><th></th></tr></thead>
+    <tbody>
+    {% for a in admins %}
+    <tr>
+      <td>{{ a.name or "—" }}</td>
+      <td style="color:var(--text-dim)">{{ a.user_id }}</td>
+      <td><a class="danger-link" href="/admins/delete/{{ a.id }}">حذف</a></td>
+    </tr>
+    {% else %}
+    <tr><td colspan="3" style="color:var(--text-dim)">لسه مفيش مشرفين مضافين.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

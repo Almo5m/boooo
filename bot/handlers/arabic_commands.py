@@ -1,7 +1,7 @@
 import datetime
 from aiogram import Router
 from aiogram.types import Message, ChatPermissions
-from database import get_session, Warning
+from database import get_session, Warning, Admin
 from bot.handlers.welcome import get_or_create_settings
 
 router = Router()
@@ -18,9 +18,26 @@ FULL_PERMS = ChatPermissions(
 )
 
 
+def is_bot_admin_id(user_id: int) -> bool:
+    """
+    الأساس الحقيقي لصلاحية التحكم: المالك (OWNER_IDS) أو مشرف مضاف من الخاص.
+    """
+    from bot.bot import is_owner
+    if is_owner(user_id):
+        return True
+    session = get_session()
+    try:
+        return session.query(Admin).filter_by(user_id=user_id).first() is not None
+    finally:
+        session.close()
+
+
 async def is_group_admin(message: Message) -> bool:
-    member = await message.bot.get_chat_member(message.chat.id, message.from_user.id)
-    return member.status in ("administrator", "creator")
+    """
+    التحكم في البوت مقصور على المالك (OWNER_IDS) والمشرفين المضافين من الخاص،
+    مش أي أدمن تليجرام عادي في الجروب.
+    """
+    return is_bot_admin_id(message.from_user.id)
 
 
 def get_target(message: Message):
@@ -77,7 +94,7 @@ ALL_COMMAND_WORDS = (
 
 
 def is_arabic_admin_command(message: Message) -> bool:
-    if not message.text:
+    if not message.text or message.chat.type == "private":
         return False
     cmd, _ = match_command(message.text, ALL_COMMAND_WORDS)
     return cmd is not None

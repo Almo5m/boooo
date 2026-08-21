@@ -2,7 +2,7 @@ import os
 import httpx
 from collections import defaultdict, deque
 
-BOT_PERSONA_NAME = os.getenv("BOT_PERSONA_NAME", "مستر روبوت")
+BOT_PERSONA_NAME = os.getenv("BOT_PERSONA_NAME", "بو")
 
 # ---- إعدادات مزوّد الذكاء الاصطناعي ----
 # غيّر AI_PROVIDER في الـ Variables لـ: groq | openrouter | gemini
@@ -24,7 +24,7 @@ PROVIDERS = {
         # جوجل بتوفر endpoint متوافق مع صيغة OpenAI
         "url": "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
         "key_env": "GEMINI_API_KEY",
-        "default_model": "gemini-1.5-flash",
+        "default_model": "gemini-3.6-flash",
     },
 }
 

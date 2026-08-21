@@ -1,4 +1,4 @@
-from aiogram import Router
+from aiogram import Router, F
 from aiogram.types import Message
 from aiogram.filters import Command
 from bot.ai_engine import BOT_PERSONA_NAME
@@ -38,14 +38,17 @@ HELP_TEXT = f"""
 الرسايل المجدولة
 الغاء الجدولة [رقم]
 
-<b>الدردشة:</b>
-كلم البوت عادي أو رد على رسالته أو نادي عليه بـ "{BOT_PERSONA_NAME}" وهيرد عليك كإنه واحد من الجروب 🙂
+<b>لوحة التحكم من الخاص:</b>
+لو انت المالك أو مشرف مضاف، ابعت /start أو "لوحة" للبوت في الخاص وهتلاقي قائمة أزرار كاملة (مواد، أسئلة، اختبارات، جدولة، مشرفين، إعدادات).
 
-⚙️ لوحة التحكم لإدارة الأسئلة والاختبارات والجدولة متاحة على الرابط اللي هتاخده بعد رفع البوت على Railway.
+<b>الدردشة:</b>
+كلم البوت عادي أو رد على رسالته أو نادي عليه بـ "{BOT_PERSONA_NAME}" وهيرد عليك كإنه واحد من الجروب. وبيفهم كمان السلام والأسئلة المباشرة من غير ما تنادي عليه.
+
+⚙️ لوحة التحكم على الويب لإدارة الأسئلة والاختبارات والجدولة متاحة على الرابط اللي هتاخده من Railway.
 """
 
 
-@router.message(Command("start"))
+@router.message(Command("start"), F.chat.type != "private")
 async def start_cmd(message: Message):
     await message.reply(
         f"أهلاً بيك! أنا {BOT_PERSONA_NAME}، بساعد في إدارة جروب الصف الثالث الثانوي 🎓\nاكتب /help عشان تشوف كل الأوامر."

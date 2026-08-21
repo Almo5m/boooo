@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 
 from database import (
     get_session, init_db, Subject, Question, Exam, ExamResult,
-    ScheduledMessage, GroupSettings, Warning,
+    ScheduledMessage, GroupSettings, Warning, Admin,
 )
 
 load_dotenv()
@@ -79,8 +79,32 @@ async def dashboard_home(request: Request):
             "scheduled": session.query(ScheduledMessage).filter_by(is_active=True).count(),
         }
         recent_results = session.query(ExamResult).order_by(ExamResult.finished_at.desc()).limit(10).all()
+
+        # بيانات الرسم البياني: عدد الأسئلة لكل مادة
+        subjects = session.query(Subject).all()
+        subjects_chart = {
+            "labels": [s.name for s in subjects],
+            "values": [len(s.questions) for s in subjects],
+        }
+
+        # بيانات الرسم البياني: متوسط النتائج لآخر ١٠ اختبارات (بالنسبة المئوية)
+        last_results = session.query(ExamResult).order_by(ExamResult.finished_at.asc()).limit(50).all()
+        trend_labels, trend_values = [], []
+        for r in last_results[-10:]:
+            pct = round((r.score / r.total) * 100) if r.total else 0
+            trend_labels.append(r.user_name[:10] if r.user_name else "-")
+            trend_values.append(pct)
+
         return templates.TemplateResponse(
-            "home.html", {"request": request, "stats": stats, "recent_results": recent_results}
+            "home.html",
+            {
+                "request": request,
+                "stats": stats,
+                "recent_results": recent_results,
+                "subjects_chart": json.dumps(subjects_chart, ensure_ascii=False),
+                "trend_labels": json.dumps(trend_labels, ensure_ascii=False),
+                "trend_values": json.dumps(trend_values),
+            },
         )
     finally:
         session.close()
@@ -306,6 +330,52 @@ async def delete_scheduled(request: Request, msg_id: int):
             m.is_active = False
             session.commit()
         return RedirectResponse("/scheduled", status_code=302)
+    finally:
+        session.close()
+
+
+# ---------------- المشرفين ----------------
+
+@app.get("/admins", response_class=HTMLResponse)
+async def admins_page(request: Request):
+    if not request.session.get("logged_in"):
+        return RedirectResponse("/login", status_code=302)
+    session = get_session()
+    try:
+        admins = session.query(Admin).all()
+        owner_ids = os.getenv("OWNER_IDS", "")
+        return templates.TemplateResponse(
+            "admins.html", {"request": request, "admins": admins, "owner_ids": owner_ids}
+        )
+    finally:
+        session.close()
+
+
+@app.post("/admins/add")
+async def add_admin(request: Request, user_id: int = Form(...), name: str = Form("")):
+    if not request.session.get("logged_in"):
+        return RedirectResponse("/login", status_code=302)
+    session = get_session()
+    try:
+        if not session.query(Admin).filter_by(user_id=user_id).first():
+            session.add(Admin(user_id=user_id, name=name))
+            session.commit()
+        return RedirectResponse("/admins", status_code=302)
+    finally:
+        session.close()
+
+
+@app.get("/admins/delete/{admin_id}")
+async def delete_admin(request: Request, admin_id: int):
+    if not request.session.get("logged_in"):
+        return RedirectResponse("/login", status_code=302)
+    session = get_session()
+    try:
+        a = session.query(Admin).filter_by(id=admin_id).first()
+        if a:
+            session.delete(a)
+            session.commit()
+        return RedirectResponse("/admins", status_code=302)
     finally:
         session.close()
 
