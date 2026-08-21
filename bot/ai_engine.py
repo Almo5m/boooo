@@ -75,20 +75,29 @@ async def get_ai_reply(chat_id: int, user_name: str, user_message: str) -> str:
         "max_tokens": 800,
     }
     if AI_PROVIDER == "gemini":
-        # موديلات Gemini 2.5+ بتستهلك جزء من max_tokens في "تفكير" داخلي قبل الرد،
-        # وده بيقطع الرد نص كلمة. reasoning_effort=none بيقفل التفكير ده تمامًا.
-        payload["reasoning_effort"] = "none"
+        # بنقلل مستوى "التفكير" الداخلي لموديلات Gemini عشان ميستهلكش
+        # المساحة المسموحة للرد قبل ما يكتب الإجابة، فيقطعها نص كلمة.
+        payload["extra_body"] = {"google": {"thinking_config": {"thinking_level": "low"}}}
+
+    async def _post(body: dict):
+        async with httpx.AsyncClient(timeout=25) as client:
+            resp = await client.post(API_URL, headers=headers, json=body)
+            resp.raise_for_status()
+            return resp.json()
 
     try:
-        async with httpx.AsyncClient(timeout=25) as client:
-            resp = await client.post(
-                API_URL,
-                headers=headers,
-                json=payload,
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            reply = data["choices"][0]["message"]["content"].strip()
+        try:
+            data = await _post(payload)
+        except httpx.HTTPStatusError as e:
+            # لو الموديل رفض إعدادات الـ thinking تحديدًا، نعيد المحاولة من غيرها
+            # بدل ما نسيب الرد يفشل بالكامل
+            if AI_PROVIDER == "gemini" and e.response.status_code == 400 and "extra_body" in payload:
+                print(f"[AI WARN] gemini رفض extra_body، بنعيد المحاولة من غيرها: {e.response.text[:300]}")
+                payload.pop("extra_body")
+                data = await _post(payload)
+            else:
+                raise
+        reply = data["choices"][0]["message"]["content"].strip()
     except httpx.HTTPStatusError as e:
         # بنطبع تفاصيل الخطأ في الـ logs عشان تقدر تشخصه من Railway
         print(f"[AI ERROR] {AI_PROVIDER} رجع status {e.response.status_code}: {e.response.text[:500]}")
