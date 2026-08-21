@@ -6,10 +6,15 @@ from dotenv import load_dotenv
 from database import init_db
 from bot.bot import bot, dp
 from bot.handlers import general, welcome, dm_control, arabic_commands, quiz, schedule_cmds, ai_chat, filters
+from bot.middlewares import GroupRegistrationMiddleware
 from dashboard.app import app as dashboard_app, set_bot_instance
 from scheduler import scheduler, load_all_scheduled
 
 load_dotenv()
+
+# بتسجل أي جروب فورًا في قاعدة البيانات قبل أي هاندلر تاني - عشان يظهر في لوحة التحكم
+# حتى لو أول رسالة كانت سلام أو سؤال اتلقطت من الذكاء الاصطناعي مباشرة
+dp.message.outer_middleware(GroupRegistrationMiddleware())
 
 # الترتيب مهم:
 # 1) عام (start/help للجروب)  2) الترحيب  3) لوحة تحكم الخاص (لها أولوية في الخاص)

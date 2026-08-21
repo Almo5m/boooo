@@ -68,17 +68,23 @@ async def get_ai_reply(chat_id: int, user_name: str, user_message: str) -> str:
         headers["HTTP-Referer"] = "https://railway.app"
         headers["X-Title"] = BOT_PERSONA_NAME
 
+    payload = {
+        "model": MODEL,
+        "messages": messages,
+        "temperature": 0.8,
+        "max_tokens": 800,
+    }
+    if AI_PROVIDER == "gemini":
+        # موديلات Gemini 2.5+ بتستهلك جزء من max_tokens في "تفكير" داخلي قبل الرد،
+        # وده بيقطع الرد نص كلمة. reasoning_effort=none بيقفل التفكير ده تمامًا.
+        payload["reasoning_effort"] = "none"
+
     try:
-        async with httpx.AsyncClient(timeout=20) as client:
+        async with httpx.AsyncClient(timeout=25) as client:
             resp = await client.post(
                 API_URL,
                 headers=headers,
-                json={
-                    "model": MODEL,
-                    "messages": messages,
-                    "temperature": 0.8,
-                    "max_tokens": 400,
-                },
+                json=payload,
             )
             resp.raise_for_status()
             data = resp.json()
