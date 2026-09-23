@@ -163,6 +163,7 @@ def has_pending_upload(message: Message) -> bool:
 @router.message(has_pending_upload)
 async def handle_document_upload(message: Message):
     pending = PENDING.get(message.from_user.id)
+    doc: Document = message.document
     if not doc.file_name.endswith(".xlsx"):
         await message.reply("لازم يكون الملف بصيغة .xlsx")
         return
