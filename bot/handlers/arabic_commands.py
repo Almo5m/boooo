@@ -1,7 +1,7 @@
 import datetime
 from aiogram import Router
 from aiogram.types import Message, ChatPermissions
-from database import get_session, Warning, Admin
+from database import get_session, Warning, Admin, log_action
 from bot.handlers.welcome import get_or_create_settings
 
 router = Router()
@@ -119,11 +119,13 @@ async def arabic_admin_router(message: Message):
 
         if cmd in BAN_WORDS:
             await message.bot.ban_chat_member(message.chat.id, target.id)
+            log_action(message.chat.id, message.from_user.id, message.from_user.full_name, "ban", target.id, target.full_name)
             await message.reply(f"🚫 تم حظر {target.full_name}.")
             return
 
         if cmd_norm in UNBAN_WORDS or cmd in UNBAN_WORDS:
             await message.bot.unban_chat_member(message.chat.id, target.id)
+            log_action(message.chat.id, message.from_user.id, message.from_user.full_name, "unban", target.id, target.full_name)
             await message.reply(f"✅ تم رفع الحظر عن {target.full_name}.")
             return
 
@@ -134,17 +136,20 @@ async def arabic_admin_router(message: Message):
                 until = datetime.datetime.now() + datetime.timedelta(minutes=int(arg))
             await message.bot.restrict_chat_member(message.chat.id, target.id, NO_PERMS, until_date=until)
             extra = f" لمدة {arg} دقيقة" if until else ""
+            log_action(message.chat.id, message.from_user.id, message.from_user.full_name, "mute", target.id, target.full_name, details=extra)
             await message.reply(f"🔇 تم كتم {target.full_name}{extra}.")
             return
 
         if cmd_norm in UNMUTE_WORDS or cmd in UNMUTE_WORDS:
             await message.bot.restrict_chat_member(message.chat.id, target.id, FULL_PERMS)
+            log_action(message.chat.id, message.from_user.id, message.from_user.full_name, "unmute", target.id, target.full_name)
             await message.reply(f"🔊 تم فك الكتم عن {target.full_name}.")
             return
 
         if cmd in KICK_WORDS:
             await message.bot.ban_chat_member(message.chat.id, target.id)
             await message.bot.unban_chat_member(message.chat.id, target.id)
+            log_action(message.chat.id, message.from_user.id, message.from_user.full_name, "kick", target.id, target.full_name)
             await message.reply(f"👢 تم طرد {target.full_name}.")
             return
 
@@ -160,8 +165,10 @@ async def arabic_admin_router(message: Message):
                     await message.bot.ban_chat_member(message.chat.id, target.id)
                     session.query(Warning).filter_by(chat_id=message.chat.id, user_id=target.id).delete()
                     session.commit()
+                    log_action(message.chat.id, message.from_user.id, message.from_user.full_name, "ban", target.id, target.full_name, details="تلقائي بعد اكتمال التحذيرات")
                     await message.reply(f"⛔️ {target.full_name} وصل لحد التحذيرات ({settings.max_warnings}) وتم حظره تلقائيًا.")
                 else:
+                    log_action(message.chat.id, message.from_user.id, message.from_user.full_name, "warn", target.id, target.full_name, details=reason)
                     await message.reply(f"⚠️ تحذير لـ {target.full_name} ({count}/{settings.max_warnings})\nالسبب: {reason}")
             finally:
                 session.close()
@@ -172,6 +179,7 @@ async def arabic_admin_router(message: Message):
             try:
                 session.query(Warning).filter_by(chat_id=message.chat.id, user_id=target.id).delete()
                 session.commit()
+                log_action(message.chat.id, message.from_user.id, message.from_user.full_name, "reset_warns", target.id, target.full_name)
                 await message.reply(f"✅ تم مسح تحذيرات {target.full_name}.")
             finally:
                 session.close()
@@ -196,6 +204,7 @@ async def arabic_admin_router(message: Message):
             await message.reply("رد على الرسالة اللي عايز تثبتها واكتب: ثبت")
             return
         await message.bot.pin_chat_message(message.chat.id, message.reply_to_message.message_id)
+        log_action(message.chat.id, message.from_user.id, message.from_user.full_name, "pin")
         await message.reply("📌 تم التثبيت.")
         return
 
@@ -203,6 +212,7 @@ async def arabic_admin_router(message: Message):
         if not await is_group_admin(message):
             return
         await message.bot.unpin_all_chat_messages(message.chat.id)
+        log_action(message.chat.id, message.from_user.id, message.from_user.full_name, "unpin")
         await message.reply("✅ تم إلغاء تثبيت كل الرسائل.")
         return
 

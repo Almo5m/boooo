@@ -21,6 +21,7 @@ class GroupSettings(Base):
     __tablename__ = "group_settings"
     id = Column(Integer, primary_key=True)
     chat_id = Column(BigInteger, unique=True, index=True)
+    title = Column(String, default="")
     welcome_enabled = Column(Boolean, default=True)
     welcome_text = Column(Text, default="أهلاً بيك يا {name} في الجروب! 🎓\nمنور معانا في رحلة الثانوية العامة.")
     rules_text = Column(Text, default="١- الاحترام المتبادل.\n٢- ممنوع السبام والإعلانات.\n٣- الالتزام بموضوع الجروب (تعليمي فقط).")
@@ -28,6 +29,41 @@ class GroupSettings(Base):
     lock_links = Column(Boolean, default=False)
     lock_forward = Column(Boolean, default=False)
     lock_stickers = Column(Boolean, default=False)
+
+
+class BotUser(Base):
+    __tablename__ = "bot_users"
+    id = Column(Integer, primary_key=True)
+    user_id = Column(BigInteger, unique=True, index=True)
+    name = Column(String, default="")
+    username = Column(String, default="")
+    first_seen = Column(DateTime, default=datetime.datetime.utcnow)
+    last_seen = Column(DateTime, default=datetime.datetime.utcnow)
+    message_count = Column(Integer, default=0)
+
+
+class ActivityLog(Base):
+    __tablename__ = "activity_log"
+    id = Column(Integer, primary_key=True)
+    chat_id = Column(BigInteger, index=True)
+    actor_id = Column(BigInteger)
+    actor_name = Column(String, default="")
+    action = Column(String)  # ban | unban | mute | unmute | kick | warn | reset_warns | pin | unpin | lock | unlock | filter_add | filter_del | note_add | note_del
+    target_id = Column(BigInteger, nullable=True)
+    target_name = Column(String, default="")
+    details = Column(String, default="")
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+
+class StudentPoints(Base):
+    __tablename__ = "student_points"
+    id = Column(Integer, primary_key=True)
+    chat_id = Column(BigInteger, index=True)
+    user_id = Column(BigInteger, index=True)
+    name = Column(String, default="")
+    points = Column(Integer, default=0)
+    correct_answers = Column(Integer, default=0)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 
 class Admin(Base):
@@ -117,9 +153,44 @@ class ScheduledMessage(Base):
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 
+def _migrate_add_missing_columns():
+    """
+    ترقية بسيطة لقاعدة بيانات موجودة بالفعل: بتضيف أي عمود جديد اتضاف على
+    الموديلات هنا (زي title) من غير ما تمسح أي بيانات قديمة.
+    Base.metadata.create_all بيعمل الجداول الناقصة بس، مش الأعمدة الناقصة
+    في جدول موجود، فالدالة دي بتغطي الفرق ده.
+    """
+    from sqlalchemy import inspect, text
+    inspector = inspect(engine)
+    for table in Base.metadata.sorted_tables:
+        if table.name not in inspector.get_table_names():
+            continue
+        existing_cols = {c["name"] for c in inspector.get_columns(table.name)}
+        for col in table.columns:
+            if col.name in existing_cols:
+                continue
+            col_type = col.type.compile(engine.dialect)
+            with engine.begin() as conn:
+                conn.execute(text(f'ALTER TABLE {table.name} ADD COLUMN {col.name} {col_type}'))
+
+
 def init_db():
     Base.metadata.create_all(bind=engine)
+    _migrate_add_missing_columns()
 
 
 def get_session():
     return SessionLocal()
+
+
+def log_action(chat_id, actor_id, actor_name, action, target_id=None, target_name="", details=""):
+    """بتسجل أي عملية إدارية في سجل النشاط. بتفتح وتقفل الجلسة بنفسها عشان تُستخدم بسطر واحد من أي مكان."""
+    session = get_session()
+    try:
+        session.add(ActivityLog(
+            chat_id=chat_id, actor_id=actor_id, actor_name=actor_name or "",
+            action=action, target_id=target_id, target_name=target_name or "", details=details or "",
+        ))
+        session.commit()
+    finally:
+        session.close()

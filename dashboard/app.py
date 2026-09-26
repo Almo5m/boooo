@@ -10,8 +10,9 @@ from dotenv import load_dotenv
 
 from database import (
     get_session, init_db, Subject, Question, Exam, ExamResult,
-    ScheduledMessage, GroupSettings, Warning, Admin,
+    ScheduledMessage, GroupSettings, Warning, Admin, BotUser, StudentPoints,
 )
+from bot.points import get_badge, get_level
 
 load_dotenv()
 
@@ -376,6 +377,50 @@ async def delete_admin(request: Request, admin_id: int):
             session.delete(a)
             session.commit()
         return RedirectResponse("/admins", status_code=302)
+    finally:
+        session.close()
+
+
+# ---------------- نقاط الطلاب ----------------
+
+@app.get("/leaderboard", response_class=HTMLResponse)
+async def leaderboard_page(request: Request):
+    if not request.session.get("logged_in"):
+        return RedirectResponse("/login", status_code=302)
+    session = get_session()
+    try:
+        groups = session.query(GroupSettings).all()
+        selected_chat_id = request.query_params.get("chat_id")
+        board = []
+        if selected_chat_id:
+            board = (
+                session.query(StudentPoints)
+                .filter_by(chat_id=int(selected_chat_id))
+                .order_by(StudentPoints.points.desc())
+                .limit(50)
+                .all()
+            )
+            for row in board:
+                row.badge_emoji, row.badge_name = get_badge(row.points)
+                row.level = get_level(row.points)
+        return templates.TemplateResponse(
+            "leaderboard.html",
+            {"request": request, "groups": groups, "board": board, "selected_chat_id": selected_chat_id},
+        )
+    finally:
+        session.close()
+
+
+# ---------------- المستخدمين ----------------
+
+@app.get("/users", response_class=HTMLResponse)
+async def users_page(request: Request):
+    if not request.session.get("logged_in"):
+        return RedirectResponse("/login", status_code=302)
+    session = get_session()
+    try:
+        users = session.query(BotUser).order_by(BotUser.last_seen.desc()).all()
+        return templates.TemplateResponse("users.html", {"request": request, "users": users})
     finally:
         session.close()
 

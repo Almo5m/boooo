@@ -7,7 +7,7 @@
 
 {% for g in groups %}
 <div class="card">
-  <h3>جروب: <span style="color:var(--text-dim); font-weight:400;">{{ g.chat_id }}</span></h3>
+  <h3>{{ g.title if g.title else "جروب" }} <span style="color:var(--text-dim); font-weight:400;">({{ g.chat_id }})</span></h3>
   <form method="post" action="/settings/update/{{ g.chat_id }}">
     <label>رسالة الترحيب (استخدم {name})</label>
     <textarea name="welcome_text" rows="2">{{ g.welcome_text }}</textarea>

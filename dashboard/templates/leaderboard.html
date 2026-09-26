@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header">
+  <h1>🏆 لوحة الصدارة</h1>
+  <p>نقاط ومستويات الطلاب في كل جروب</p>
+</div>
+
+<div class="card">
+  <form method="get" action="/leaderboard">
+    <label>اختار الجروب</label>
+    <select name="chat_id" onchange="this.form.submit()">
+      <option value="">— اختار —</option>
+      {% for g in groups %}
+      <option value="{{ g.chat_id }}" {{ "selected" if selected_chat_id == g.chat_id|string else "" }}>
+        {{ g.title if g.title else "جروب " ~ g.chat_id }}
+      </option>
+      {% endfor %}
+    </select>
+  </form>
+</div>
+
+{% if selected_chat_id %}
+<div class="card">
+  <h3>الترتيب ({{ board|length }} طالب)</h3>
+  <table>
+    <thead><tr><th>#</th><th>الاسم</th><th>الشارة</th><th>المستوى</th><th>النقاط</th><th>إجابات صحيحة</th></tr></thead>
+    <tbody>
+    {% for row in board %}
+    <tr>
+      <td>{% if loop.index == 1 %}🥇{% elif loop.index == 2 %}🥈{% elif loop.index == 3 %}🥉{% else %}{{ loop.index }}{% endif %}</td>
+      <td>{{ row.name }}</td>
+      <td>{{ row.badge_emoji }} {{ row.badge_name }}</td>
+      <td>{{ row.level }}</td>
+      <td><span class="badge active">{{ row.points }}</span></td>
+      <td style="color:var(--text-dim)">{{ row.correct_answers }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="6" style="color:var(--text-dim)">لسه محدش كسب نقاط في الجروب ده.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+{% endblock %}

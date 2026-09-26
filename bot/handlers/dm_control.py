@@ -2,16 +2,18 @@ import json
 import datetime
 from aiogram import Router, F
 from aiogram.types import (
-    Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, Document,
+    Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, Document, ChatPermissions,
 )
 from aiogram.filters import Command
 
 from database import (
-    get_session, Subject, Question, Exam, ScheduledMessage, GroupSettings, Admin, ExamResult,
+    get_session, Subject, Question, Exam, ScheduledMessage, GroupSettings, Admin, ExamResult, BotUser,
+    ActivityLog, Warning, log_action,
 )
 from bot.handlers.arabic_commands import is_bot_admin_id
 from bot.excel_import import import_questions_from_excel
-from bot.handlers.quiz import run_exam
+from bot.handlers.quiz import run_exam, is_exam_active, stop_exam
+from bot.points import get_leaderboard, get_badge
 from scheduler import schedule_message
 
 router = Router()
@@ -26,12 +28,18 @@ def kb(rows: list[list[tuple[str, str]]]) -> InlineKeyboardMarkup:
     ])
 
 
+def group_label(g: GroupSettings) -> str:
+    return g.title if g.title else f"جروب {g.chat_id}"
+
+
 def main_menu_kb() -> InlineKeyboardMarkup:
     return kb([
         [("📚 المواد", "m:subjects"), ("❓ الأسئلة", "m:questions")],
         [("📝 الاختبارات", "m:exams"), ("🗓 الجدولة", "m:schedule")],
         [("👥 المشرفين", "m:admins"), ("⚙️ إعدادات الجروبات", "m:settings")],
-        [("📊 الإحصائيات", "m:stats")],
+        [("👤 المستخدمين", "m:users"), ("📊 الإحصائيات", "m:stats")],
+        [("🛡 إدارة سريعة", "m:moderation"), ("📋 سجل النشاط", "m:activity")],
+        [("🏆 نقاط الطلاب", "m:leaderboard")],
     ])
 
 
@@ -163,6 +171,7 @@ def has_pending_upload(message: Message) -> bool:
 @router.message(has_pending_upload)
 async def handle_document_upload(message: Message):
     pending = PENDING.get(message.from_user.id)
+    doc: Document = message.document
     if not doc.file_name.endswith(".xlsx"):
         await message.reply("لازم يكون الملف بصيغة .xlsx")
         return
@@ -187,19 +196,38 @@ async def cb_exams(callback: CallbackQuery):
     session = get_session()
     try:
         exams = session.query(Exam).order_by(Exam.id.desc()).all()
+        groups = session.query(GroupSettings).all()
+        active_groups = [g for g in groups if is_exam_active(g.chat_id)]
+
+        rows = []
+        if active_groups:
+            for g in active_groups:
+                rows.append([(f"⏹ إيقاف الاختبار في {group_label(g)}", f"m:stopexam:{g.chat_id}")])
+
         if not exams:
-            await callback.message.edit_text(
-                "مفيش اختبارات لسه. اعملها من لوحة التحكم على الويب.",
-                reply_markup=kb([[("« رجوع", "m:main")]]),
-            )
+            rows.append([("« رجوع", "m:main")])
+            text = "مفيش اختبارات لسه. اعملها من لوحة التحكم على الويب."
+            if active_groups:
+                text = "⏹ فيه اختبار شغال دلوقتي، تقدر توقفه من تحت.\n\n" + text
+            await callback.message.edit_text(text, reply_markup=kb(rows))
             await callback.answer()
             return
-        rows = [[(f"▶️ {e.title}", f"m:startexam:{e.id}")] for e in exams]
+
+        rows += [[(f"▶️ {e.title}", f"m:startexam:{e.id}")] for e in exams]
         rows.append([("« رجوع", "m:main")])
         await callback.message.edit_text("📝 <b>الاختبارات المتاحة:</b>", reply_markup=kb(rows))
     finally:
         session.close()
     await callback.answer()
+
+
+@router.callback_query(F.data.startswith("m:stopexam:"))
+@_admin_only_callback
+async def cb_stop_exam(callback: CallbackQuery):
+    chat_id = int(callback.data.split(":")[2])
+    stopped = stop_exam(chat_id)
+    await callback.answer("⏹ جاري الإيقاف..." if stopped else "مفيش اختبار شغال دلوقتي.", show_alert=True)
+    await cb_exams(callback)
 
 
 @router.callback_query(F.data.startswith("m:startexam:"))
@@ -216,7 +244,7 @@ async def cb_start_exam_pick_group(callback: CallbackQuery):
             )
             await callback.answer()
             return
-        rows = [[(f"جروب {g.chat_id}", f"m:startexam_go:{exam_id}:{g.chat_id}")] for g in groups]
+        rows = [[(group_label(g), f"m:startexam_go:{exam_id}:{g.chat_id}")] for g in groups]
         rows.append([("« رجوع", "m:exams")])
         await callback.message.edit_text("اختار الجروب اللي هيتشغل فيه الاختبار:", reply_markup=kb(rows))
     finally:
@@ -270,7 +298,7 @@ async def cb_add_schedule(callback: CallbackQuery):
             )
             await callback.answer()
             return
-        rows = [[(f"جروب {g.chat_id}", f"m:sched_group:{g.chat_id}")] for g in groups]
+        rows = [[(group_label(g), f"m:sched_group:{g.chat_id}")] for g in groups]
         rows.append([("« إلغاء", "m:schedule")])
         await callback.message.edit_text("لأي جروب؟", reply_markup=kb(rows))
     finally:
@@ -386,7 +414,7 @@ async def cb_settings(callback: CallbackQuery):
             )
             await callback.answer()
             return
-        rows = [[(f"جروب {g.chat_id}", f"m:group_settings:{g.chat_id}")] for g in groups]
+        rows = [[(group_label(g), f"m:group_settings:{g.chat_id}")] for g in groups]
         rows.append([("« رجوع", "m:main")])
         await callback.message.edit_text("⚙️ اختار الجروب:", reply_markup=kb(rows))
     finally:
@@ -405,7 +433,7 @@ async def cb_group_settings(callback: CallbackQuery):
             await callback.answer("الجروب مش موجود.", show_alert=True)
             return
         text = (
-            f"⚙️ <b>إعدادات جروب {chat_id}</b>\n\n"
+            f"⚙️ <b>إعدادات {group_label(g)}</b>\n\n"
             f"📜 القوانين:\n{g.rules_text[:200]}\n\n"
             f"👋 الترحيب:\n{g.welcome_text[:200]}\n\n"
             f"⚠️ حد التحذيرات: {g.max_warnings}"
@@ -461,6 +489,157 @@ async def cb_stats(callback: CallbackQuery):
         await callback.message.edit_text(text, reply_markup=kb([[("« رجوع", "m:main")]]))
     finally:
         session.close()
+    await callback.answer()
+
+
+# ---------------- المستخدمين ----------------
+
+@router.callback_query(F.data == "m:users")
+@_admin_only_callback
+async def cb_users(callback: CallbackQuery):
+    session = get_session()
+    try:
+        total = session.query(BotUser).count()
+        recent = session.query(BotUser).order_by(BotUser.last_seen.desc()).limit(20).all()
+        lines = [f"👤 <b>إجمالي المستخدمين اللي جربوا البوت: {total}</b>\n"]
+        lines.append("آخر ٢٠ نشاط:")
+        for u in recent:
+            uname = f"@{u.username}" if u.username else ""
+            lines.append(f"• {u.name} {uname} — {u.message_count} رسالة".strip())
+        if not recent:
+            lines.append("لسه محدش استخدم البوت.")
+        await callback.message.edit_text("\n".join(lines), reply_markup=kb([[("« رجوع", "m:main")]]))
+    finally:
+        session.close()
+    await callback.answer()
+
+
+# ---------------- نقاط الطلاب ----------------
+
+@router.callback_query(F.data == "m:leaderboard")
+@_admin_only_callback
+async def cb_leaderboard_pick_group(callback: CallbackQuery):
+    session = get_session()
+    try:
+        groups = session.query(GroupSettings).all()
+        if not groups:
+            await callback.message.edit_text(
+                "لسه مفيش جروب مسجل.",
+                reply_markup=kb([[("« رجوع", "m:main")]]),
+            )
+            await callback.answer()
+            return
+        rows = [[(group_label(g), f"m:leaderboard_show:{g.chat_id}")] for g in groups]
+        rows.append([("« رجوع", "m:main")])
+        await callback.message.edit_text("🏆 اختار الجروب:", reply_markup=kb(rows))
+    finally:
+        session.close()
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("m:leaderboard_show:"))
+@_admin_only_callback
+async def cb_leaderboard_show(callback: CallbackQuery):
+    chat_id = int(callback.data.split(":")[2])
+    board = get_leaderboard(chat_id, limit=15)
+    lines = ["🏆 <b>لوحة الصدارة</b>\n"]
+    medals = ["🥇", "🥈", "🥉"]
+    for i, row in enumerate(board):
+        medal = medals[i] if i < 3 else f"{i + 1}."
+        emoji, _ = get_badge(row.points)
+        lines.append(f"{medal} {row.name} {emoji} — {row.points} نقطة")
+    if not board:
+        lines.append("لسه محدش كسب نقاط في الجروب ده.")
+    await callback.message.edit_text("\n".join(lines), reply_markup=kb([[("« رجوع", "m:leaderboard")]]))
+    await callback.answer()
+
+
+# ---------------- سجل النشاط ----------------
+
+ACTION_LABELS = {
+    "ban": "🚫 حظر", "unban": "✅ رفع حظر", "mute": "🔇 كتم", "unmute": "🔊 فك كتم",
+    "kick": "👢 طرد", "warn": "⚠️ تحذير", "reset_warns": "🧹 مسح تحذيرات",
+    "pin": "📌 تثبيت", "unpin": "📍 إلغاء تثبيت", "lock": "🔒 قفل", "unlock": "🔓 فتح",
+    "filter_add": "🚫➕ إضافة كلمة ممنوعة", "filter_del": "🚫➖ حذف كلمة ممنوعة",
+    "note_add": "🗒➕ إضافة ملاحظة", "note_del": "🗒➖ حذف ملاحظة",
+}
+
+
+@router.callback_query(F.data == "m:activity")
+@_admin_only_callback
+async def cb_activity(callback: CallbackQuery):
+    session = get_session()
+    try:
+        logs = session.query(ActivityLog).order_by(ActivityLog.id.desc()).limit(20).all()
+        lines = ["📋 <b>آخر ٢٠ عملية إدارية:</b>\n"]
+        for log in logs:
+            label = ACTION_LABELS.get(log.action, log.action)
+            when = log.created_at.strftime("%m-%d %H:%M")
+            line = f"{when} — {label} — {log.actor_name}"
+            if log.target_name:
+                line += f" ← {log.target_name}"
+            if log.details:
+                line += f" ({log.details})"
+            lines.append(line)
+        if not logs:
+            lines.append("لسه مفيش أي نشاط مسجل.")
+        await callback.message.edit_text("\n".join(lines), reply_markup=kb([[("« رجوع", "m:main")]]))
+    finally:
+        session.close()
+    await callback.answer()
+
+
+# ---------------- إدارة سريعة من الخاص (بدون الدخول للجروب) ----------------
+
+@router.callback_query(F.data == "m:moderation")
+@_admin_only_callback
+async def cb_moderation(callback: CallbackQuery):
+    session = get_session()
+    try:
+        groups = session.query(GroupSettings).all()
+        if not groups:
+            await callback.message.edit_text(
+                "لسه مفيش جروب مسجل.",
+                reply_markup=kb([[("« رجوع", "m:main")]]),
+            )
+            await callback.answer()
+            return
+        rows = [[(group_label(g), f"m:mod_group:{g.chat_id}")] for g in groups]
+        rows.append([("« رجوع", "m:main")])
+        await callback.message.edit_text("🛡 اختار الجروب اللي عايز تدير فيه عضو:", reply_markup=kb(rows))
+    finally:
+        session.close()
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("m:mod_group:"))
+@_admin_only_callback
+async def cb_mod_group(callback: CallbackQuery):
+    chat_id = int(callback.data.split(":")[2])
+    rows = [
+        [("🚫 حظر عضو", f"m:mod_action:ban:{chat_id}")],
+        [("✅ رفع حظر عن عضو", f"m:mod_action:unban:{chat_id}")],
+        [("🔇 كتم عضو", f"m:mod_action:mute:{chat_id}")],
+        [("🔊 فك كتم عضو", f"m:mod_action:unmute:{chat_id}")],
+        [("« رجوع", "m:moderation")],
+    ]
+    await callback.message.edit_text(
+        "اختار العملية، وبعدين ابعتلي فوروارد لرسالة من العضو أو آيدي التليجرام بتاعه:",
+        reply_markup=kb(rows),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("m:mod_action:"))
+@_admin_only_callback
+async def cb_mod_action(callback: CallbackQuery):
+    _, _, action, chat_id = callback.data.split(":")
+    PENDING[callback.from_user.id] = {"action": "moderate", "mod_action": action, "chat_id": int(chat_id)}
+    action_ar = {"ban": "حظر", "unban": "رفع حظر عن", "mute": "كتم", "unmute": "فك كتم عن"}[action]
+    await callback.message.edit_text(
+        f"ابعتلي فوروارد لرسالة من العضو اللي عايز {action_ar}ه، أو ابعت آيدي التليجرام بتاعه مباشرة:",
+        reply_markup=kb([[("« إلغاء", f"m:mod_group:{chat_id}")]]),
+    )
     await callback.answer()
 
 
@@ -551,5 +730,48 @@ async def handle_pending_text(message: Message):
             await message.answer(f"✅ تمت إضافة {target_name or target_id} كمشرف.", reply_markup=kb([[("« القائمة الرئيسية", "m:main")]]))
         finally:
             session.close()
+        PENDING.pop(message.from_user.id, None)
+        return
+
+    if action == "moderate":
+        target_id = None
+        target_name = ""
+        if message.forward_from:
+            target_id = message.forward_from.id
+            target_name = message.forward_from.full_name
+        elif message.text and message.text.strip().isdigit():
+            target_id = int(message.text.strip())
+        else:
+            await message.answer("محتاج فوروارد لرسالة من الشخص أو آيدي رقمي.")
+            return
+
+        chat_id = pending["chat_id"]
+        mod_action = pending["mod_action"]
+        NO_PERMS_MOD = ChatPermissions(
+            can_send_messages=False, can_send_media_messages=False,
+            can_send_polls=False, can_send_other_messages=False, can_add_web_page_previews=False,
+        )
+        FULL_PERMS_MOD = ChatPermissions(
+            can_send_messages=True, can_send_media_messages=True,
+            can_send_polls=True, can_send_other_messages=True, can_add_web_page_previews=True,
+        )
+        try:
+            if mod_action == "ban":
+                await message.bot.ban_chat_member(chat_id, target_id)
+                result_text = f"🚫 تم حظر {target_name or target_id}."
+            elif mod_action == "unban":
+                await message.bot.unban_chat_member(chat_id, target_id)
+                result_text = f"✅ تم رفع الحظر عن {target_name or target_id}."
+            elif mod_action == "mute":
+                await message.bot.restrict_chat_member(chat_id, target_id, NO_PERMS_MOD)
+                result_text = f"🔇 تم كتم {target_name or target_id}."
+            else:  # unmute
+                await message.bot.restrict_chat_member(chat_id, target_id, FULL_PERMS_MOD)
+                result_text = f"🔊 تم فك الكتم عن {target_name or target_id}."
+
+            log_action(chat_id, message.from_user.id, message.from_user.full_name, mod_action, target_id, target_name, details="من لوحة الخاص")
+            await message.answer(result_text, reply_markup=kb([[("« القائمة الرئيسية", "m:main")]]))
+        except Exception as e:
+            await message.answer(f"❌ حصل خطأ: {e}\nتأكد إن البوت أدمن في الجروب ده وإن الآيدي صحيح.")
         PENDING.pop(message.from_user.id, None)
         return

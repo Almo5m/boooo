@@ -1,6 +1,6 @@
 from aiogram import Router, F
 from aiogram.types import Message
-from database import get_session, FilterWord, Note
+from database import get_session, FilterWord, Note, log_action
 from bot.handlers.welcome import get_or_create_settings
 from bot.handlers.arabic_commands import is_group_admin, match_command
 
@@ -43,6 +43,7 @@ async def filter_control_router(message: Message):
         try:
             session.add(FilterWord(chat_id=message.chat.id, trigger=trigger.lower(), reply=reply))
             session.commit()
+            log_action(message.chat.id, message.from_user.id, message.from_user.full_name, "filter_add", details=trigger)
             await message.reply(f"✅ تمت إضافة الفلتر على كلمة: {trigger}")
         finally:
             session.close()
@@ -58,6 +59,7 @@ async def filter_control_router(message: Message):
         try:
             session.query(FilterWord).filter_by(chat_id=message.chat.id, trigger=rest.lower()).delete()
             session.commit()
+            log_action(message.chat.id, message.from_user.id, message.from_user.full_name, "filter_del", details=rest)
             await message.reply("✅ تم حذف الفلتر.")
         finally:
             session.close()
@@ -76,6 +78,7 @@ async def filter_control_router(message: Message):
             session.query(Note).filter_by(chat_id=message.chat.id, keyword=keyword.lower()).delete()
             session.add(Note(chat_id=message.chat.id, keyword=keyword.lower(), content=content))
             session.commit()
+            log_action(message.chat.id, message.from_user.id, message.from_user.full_name, "note_add", details=keyword)
             await message.reply(f"✅ تم حفظ الملاحظة تحت الكلمة: #{keyword}")
         finally:
             session.close()
@@ -107,6 +110,7 @@ async def filter_control_router(message: Message):
             setattr(settings, f"lock_{target_key}", cmd in LOCK_WORDS)
             session.commit()
             action = "قفل" if cmd in LOCK_WORDS else "فتح"
+            log_action(message.chat.id, message.from_user.id, message.from_user.full_name, "lock" if cmd in LOCK_WORDS else "unlock", details=rest)
             await message.reply(f"{'🔒' if cmd in LOCK_WORDS else '🔓'} تم {action}: {rest}")
         finally:
             session.close()
