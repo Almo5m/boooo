@@ -12,7 +12,7 @@ from database import (
 )
 from bot.handlers.arabic_commands import is_bot_admin_id
 from bot.excel_import import import_questions_from_excel
-from bot.handlers.quiz import run_exam, is_exam_active, stop_exam
+from bot.handlers.quiz import run_exam, is_exam_active, stop_exam, post_static_questions
 from bot.points import get_leaderboard, get_badge
 from scheduler import schedule_message
 
@@ -213,9 +213,18 @@ async def cb_exams(callback: CallbackQuery):
             await callback.answer()
             return
 
-        rows += [[(f"▶️ {e.title}", f"m:startexam:{e.id}")] for e in exams]
+        for e in exams:
+            rows.append([
+                (f"▶️ {e.title}", f"m:startexam:{e.id}"),
+                ("📄 مراجعة", f"m:staticexam:{e.id}"),
+            ])
         rows.append([("« رجوع", "m:main")])
-        await callback.message.edit_text("📝 <b>الاختبارات المتاحة:</b>", reply_markup=kb(rows))
+        await callback.message.edit_text(
+            "📝 <b>الاختبارات المتاحة:</b>\n"
+            "▶️ يشغّل اختبار مؤقت بنقط ومنافسة\n"
+            "📄 ينشر الأسئلة كمراجعة دايمة والإجابة مخفية جوه Spoiler",
+            reply_markup=kb(rows),
+        )
     finally:
         session.close()
     await callback.answer()
@@ -259,6 +268,38 @@ async def cb_start_exam_go(callback: CallbackQuery):
     await callback.message.edit_text("🚀 جاري تشغيل الاختبار في الجروب...")
     await callback.answer()
     result = await run_exam(callback.bot, int(chat_id), int(exam_id))
+    await callback.message.answer(result, reply_markup=kb([[("« القائمة الرئيسية", "m:main")]]))
+
+
+@router.callback_query(F.data.startswith("m:staticexam:"))
+@_admin_only_callback
+async def cb_static_exam_pick_group(callback: CallbackQuery):
+    exam_id = int(callback.data.split(":")[2])
+    session = get_session()
+    try:
+        groups = session.query(GroupSettings).all()
+        if not groups:
+            await callback.message.edit_text(
+                "لسه مفيش جروب مسجل. لازم البوت يستخدم فيه أمر أول مرة عشان يتسجل.",
+                reply_markup=kb([[("« رجوع", "m:exams")]]),
+            )
+            await callback.answer()
+            return
+        rows = [[(group_label(g), f"m:staticexam_go:{exam_id}:{g.chat_id}")] for g in groups]
+        rows.append([("« رجوع", "m:exams")])
+        await callback.message.edit_text("اختار الجروب اللي هتنشر فيه الأسئلة للمراجعة:", reply_markup=kb(rows))
+    finally:
+        session.close()
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("m:staticexam_go:"))
+@_admin_only_callback
+async def cb_static_exam_go(callback: CallbackQuery):
+    _, _, exam_id, chat_id = callback.data.split(":")
+    await callback.message.edit_text("📤 جاري نشر الأسئلة...")
+    await callback.answer()
+    result = await post_static_questions(callback.bot, int(chat_id), int(exam_id))
     await callback.message.answer(result, reply_markup=kb([[("« القائمة الرئيسية", "m:main")]]))
 
 

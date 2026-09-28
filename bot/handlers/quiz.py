@@ -1,4 +1,5 @@
 import json
+import html
 import asyncio
 from aiogram import Router, Bot
 from aiogram.types import Message
@@ -15,11 +16,15 @@ ACTIVE_EXAMS = {}
 
 START_EXAM_WORDS = {"ابدأ اختبار", "ابدء اختبار", "شغل اختبار"}
 STOP_EXAM_WORDS = {"وقف الاختبار", "ايقاف الاختبار", "إيقاف الاختبار"}
+STATIC_QUESTIONS_WORDS = {"اسئلة للمراجعة", "أسئلة للمراجعة", "اسئلة اختبار", "أسئلة اختبار"}
 MY_RESULTS_WORDS = {"نتايجي", "نتائجي"}
 MY_POINTS_WORDS = {"نقاطي", "مستواي"}
 LEADERBOARD_WORDS = {"الترتيب", "لوحة الصدارة"}
 
-QUIZ_COMMAND_WORDS = START_EXAM_WORDS | STOP_EXAM_WORDS | MY_RESULTS_WORDS | MY_POINTS_WORDS | LEADERBOARD_WORDS
+QUIZ_COMMAND_WORDS = (
+    START_EXAM_WORDS | STOP_EXAM_WORDS | STATIC_QUESTIONS_WORDS
+    | MY_RESULTS_WORDS | MY_POINTS_WORDS | LEADERBOARD_WORDS
+)
 
 
 def is_exam_active(chat_id: int) -> bool:
@@ -135,6 +140,51 @@ async def run_exam(bot: Bot, chat_id: int, exam_id: int) -> str:
         session.close()
 
 
+async def post_static_questions(bot: Bot, chat_id: int, exam_id: int) -> str:
+    """
+    بتنشر أسئلة الاختبار كرسائل ثابتة تفضل ظاهرة في الجروب للأبد، والإجابة
+    مخفية جوه Spoiler (المستخدم بيدوس بإيده عشان يكشفها) - مناسبة للمراجعة
+    الحرة بدل الاختبار المؤقت المحسوب بنقط.
+    """
+    session = get_session()
+    try:
+        exam = session.query(Exam).filter_by(id=exam_id).first()
+        if not exam:
+            return "❌ مفيش اختبار بالرقم ده."
+        q_ids = json.loads(exam.question_ids)
+        questions = session.query(Question).filter(Question.id.in_(q_ids)).all()
+        q_map = {q.id: q for q in questions}
+        ordered = [q_map[i] for i in q_ids if i in q_map]
+
+        if not ordered:
+            return "الاختبار ده فاضي من الأسئلة."
+
+        await bot.send_message(
+            chat_id,
+            f"📄 <b>أسئلة للمراجعة: {html.escape(exam.title)}</b>\n"
+            f"جاوب في دماغك الأول، وبعدين دوس على الإجابة عشان تظهر 👇",
+        )
+
+        for i, q in enumerate(ordered, 1):
+            options = json.loads(q.options)
+            opts_text = "\n".join(f"{idx + 1}) {html.escape(opt)}" for idx, opt in enumerate(options))
+            correct = html.escape(options[q.correct_index])
+            hidden_content = correct
+            if q.explanation:
+                hidden_content += f"\n💡 {html.escape(q.explanation)}"
+            text = (
+                f"❓ <b>سؤال {i}:</b> {html.escape(q.text)}\n\n"
+                f"{opts_text}\n\n"
+                f"الإجابة: <tg-spoiler>{hidden_content}</tg-spoiler>"
+            )
+            await bot.send_message(chat_id, text)
+            await asyncio.sleep(1)  # تجنب حدود تليجرام لمعدل إرسال الرسائل
+
+        return "✅ تم نشر الأسئلة للمراجعة."
+    finally:
+        session.close()
+
+
 def is_quiz_command(message: Message) -> bool:
     if not message.text or message.chat.type == "private":
         return False
@@ -166,6 +216,18 @@ async def quiz_router(message: Message):
             await message.reply("⏹ جاري إيقاف الاختبار...")
         else:
             await message.reply("مفيش اختبار شغال دلوقتي في الجروب ده.")
+        return
+
+    if cmd in STATIC_QUESTIONS_WORDS:
+        if not await is_group_admin(message):
+            return
+        arg = rest.strip()
+        if not arg.isdigit():
+            await message.reply("استخدم: اسئلة للمراجعة [رقم_الاختبار] (شوف الأرقام من لوحة التحكم)")
+            return
+        result = await post_static_questions(message.bot, message.chat.id, int(arg))
+        if result.startswith("❌") or result.startswith("الاختبار"):
+            await message.reply(result)
         return
 
     if cmd in MY_RESULTS_WORDS:
