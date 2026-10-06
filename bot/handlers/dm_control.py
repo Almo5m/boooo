@@ -8,7 +8,7 @@ from aiogram.filters import Command
 
 from database import (
     get_session, Subject, Question, Exam, ScheduledMessage, GroupSettings, Admin, ExamResult, BotUser,
-    ActivityLog, Warning, log_action,
+    ActivityLog, Warning, log_action, FilterWord, Note,
 )
 from bot.handlers.arabic_commands import is_bot_admin_id
 from bot.excel_import import import_questions_from_excel
@@ -39,7 +39,7 @@ def main_menu_kb() -> InlineKeyboardMarkup:
         [("👥 المشرفين", "m:admins"), ("⚙️ إعدادات الجروبات", "m:settings")],
         [("👤 المستخدمين", "m:users"), ("📊 الإحصائيات", "m:stats")],
         [("🛡 إدارة سريعة", "m:moderation"), ("📋 سجل النشاط", "m:activity")],
-        [("🏆 نقاط الطلاب", "m:leaderboard")],
+        [("🏆 نقاط الطلاب", "m:leaderboard"), ("📢 إرسال فوري", "m:broadcast")],
     ])
 
 
@@ -96,18 +96,36 @@ async def cb_subjects(callback: CallbackQuery):
     session = get_session()
     try:
         subjects = session.query(Subject).all()
-        lines = ["📚 <b>المواد:</b>\n"]
+        rows = [[("➕ إضافة مادة", "m:add_subject")]]
         for s in subjects:
-            lines.append(f"• {s.name} ({len(s.questions)} سؤال)")
-        if not subjects:
-            lines.append("مفيش مواد بعد.")
-        await callback.message.edit_text(
-            "\n".join(lines),
-            reply_markup=kb([[("➕ إضافة مادة", "m:add_subject")], [("« رجوع", "m:main")]]),
-        )
+            rows.append([(f"{s.name} ({len(s.questions)})", "m:noop"), ("🗑", f"m:del_subject:{s.id}")])
+        rows.append([("« رجوع", "m:main")])
+        text = "📚 <b>المواد:</b>" if subjects else "📚 <b>المواد:</b>\n\nمفيش مواد بعد."
+        await callback.message.edit_text(text, reply_markup=kb(rows))
     finally:
         session.close()
     await callback.answer()
+
+
+@router.callback_query(F.data == "m:noop")
+async def cb_noop(callback: CallbackQuery):
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("m:del_subject:"))
+@_admin_only_callback
+async def cb_del_subject(callback: CallbackQuery):
+    subject_id = int(callback.data.split(":")[2])
+    session = get_session()
+    try:
+        s = session.query(Subject).filter_by(id=subject_id).first()
+        if s:
+            session.delete(s)
+            session.commit()
+    finally:
+        session.close()
+    await callback.answer("تم الحذف ✅ (والأسئلة اللي جواها)")
+    await cb_subjects(callback)
 
 
 @router.callback_query(F.data == "m:add_subject")
@@ -131,20 +149,66 @@ async def cb_questions(callback: CallbackQuery):
         subjects = session.query(Subject).all()
         if not subjects:
             await callback.message.edit_text(
-                "لازم تضيف مادة الأول قبل رفع الأسئلة.",
+                "لازم تضيف مادة الأول قبل ما تضيف أسئلة.",
                 reply_markup=kb([[("➕ إضافة مادة", "m:add_subject")], [("« رجوع", "m:main")]]),
             )
             await callback.answer()
             return
-        rows = [[(f"{s.name} ({len(s.questions)})", f"m:upload:{s.id}")] for s in subjects]
+        rows = [[(f"{s.name} ({len(s.questions)})", f"m:subj_questions:{s.id}")] for s in subjects]
         rows.append([("« رجوع", "m:main")])
-        await callback.message.edit_text(
-            "❓ <b>بنك الأسئلة</b>\nاختار المادة اللي عايز ترفعلها أسئلة من ملف إكسيل:",
-            reply_markup=kb(rows),
-        )
+        await callback.message.edit_text("❓ <b>بنك الأسئلة</b>\nاختار المادة:", reply_markup=kb(rows))
     finally:
         session.close()
     await callback.answer()
+
+
+async def render_subject_questions(callback: CallbackQuery, subject_id: int):
+    session = get_session()
+    try:
+        subj = session.query(Subject).filter_by(id=subject_id).first()
+        if not subj:
+            await callback.message.edit_text("المادة مش موجودة.", reply_markup=kb([[("« رجوع", "m:questions")]]))
+            return
+        rows = [
+            [("📤 رفع إكسيل", f"m:upload:{subject_id}"), ("➕ سؤال يدوي", f"m:new_question:{subject_id}")],
+        ]
+        for q in subj.questions[:30]:
+            rows.append([(q.text[:35], "m:noop"), ("✏️", f"m:q_edit:{q.id}"), ("🗑", f"m:q_del:{q.id}")])
+        rows.append([("« رجوع", "m:questions")])
+        text = f"❓ <b>أسئلة مادة {subj.name}</b> ({len(subj.questions)})"
+        if len(subj.questions) > 30:
+            text += "\n(عرض أول ٣٠ سؤال بس)"
+        await callback.message.edit_text(text, reply_markup=kb(rows))
+    finally:
+        session.close()
+
+
+@router.callback_query(F.data.startswith("m:subj_questions:"))
+@_admin_only_callback
+async def cb_subj_questions(callback: CallbackQuery):
+    subject_id = int(callback.data.split(":")[2])
+    await render_subject_questions(callback, subject_id)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("m:q_del:"))
+@_admin_only_callback
+async def cb_q_del(callback: CallbackQuery):
+    question_id = int(callback.data.split(":")[2])
+    session = get_session()
+    try:
+        q = session.query(Question).filter_by(id=question_id).first()
+        subject_id = q.subject_id if q else None
+        if q:
+            session.delete(q)
+            session.commit()
+    finally:
+        session.close()
+    await callback.answer("تم الحذف ✅")
+    if subject_id:
+        await render_subject_questions(callback, subject_id)
+    else:
+        await cb_questions(callback)
 
 
 @router.callback_query(F.data.startswith("m:upload:"))
@@ -156,8 +220,40 @@ async def cb_upload(callback: CallbackQuery):
         "📎 ابعت ملف إكسيل (.xlsx) بالأسئلة دلوقتي.\n\n"
         "ترتيب الأعمدة:\n"
         "A: نص السؤال | B,C,D,E: الاختيارات (لغاية 4) | F: رقم الإجابة الصحيحة (0=الأول) | G: شرح (اختياري) | H: الصعوبة (اختياري)",
-        reply_markup=kb([[("« إلغاء", "m:questions")]]),
+        reply_markup=kb([[("« إلغاء", f"m:subj_questions:{subject_id}")]]),
     )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("m:new_question:"))
+@_admin_only_callback
+async def cb_new_question(callback: CallbackQuery):
+    subject_id = int(callback.data.split(":")[2])
+    PENDING[callback.from_user.id] = {"action": "q_text", "mode": "new", "subject_id": subject_id}
+    await callback.message.edit_text(
+        "اكتب نص السؤال:",
+        reply_markup=kb([[("« إلغاء", f"m:subj_questions:{subject_id}")]]),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("m:q_edit:"))
+@_admin_only_callback
+async def cb_q_edit(callback: CallbackQuery):
+    question_id = int(callback.data.split(":")[2])
+    session = get_session()
+    try:
+        q = session.query(Question).filter_by(id=question_id).first()
+        if not q:
+            await callback.answer("السؤال مش موجود.", show_alert=True)
+            return
+        PENDING[callback.from_user.id] = {"action": "q_text", "mode": "edit", "question_id": question_id, "subject_id": q.subject_id}
+        await callback.message.edit_text(
+            f"النص الحالي: {q.text}\n\nاكتب نص السؤال الجديد:",
+            reply_markup=kb([[("« إلغاء", f"m:subj_questions:{q.subject_id}")]]),
+        )
+    finally:
+        session.close()
     await callback.answer()
 
 
@@ -204,9 +300,11 @@ async def cb_exams(callback: CallbackQuery):
             for g in active_groups:
                 rows.append([(f"⏹ إيقاف الاختبار في {group_label(g)}", f"m:stopexam:{g.chat_id}")])
 
+        rows.append([("➕ اختبار جديد", "m:new_exam")])
+
         if not exams:
             rows.append([("« رجوع", "m:main")])
-            text = "مفيش اختبارات لسه. اعملها من لوحة التحكم على الويب."
+            text = "📝 <b>الاختبارات</b>\n\nمفيش اختبارات لسه، اعمل واحد من الزرار فوق."
             if active_groups:
                 text = "⏹ فيه اختبار شغال دلوقتي، تقدر توقفه من تحت.\n\n" + text
             await callback.message.edit_text(text, reply_markup=kb(rows))
@@ -217,6 +315,8 @@ async def cb_exams(callback: CallbackQuery):
             rows.append([
                 (f"▶️ {e.title}", f"m:startexam:{e.id}"),
                 ("📄 مراجعة", f"m:staticexam:{e.id}"),
+                ("✏️", f"m:exam_edit:{e.id}"),
+                ("🗑", f"m:exam_del:{e.id}"),
             ])
         rows.append([("« رجوع", "m:main")])
         await callback.message.edit_text(
@@ -303,6 +403,153 @@ async def cb_static_exam_go(callback: CallbackQuery):
     await callback.message.answer(result, reply_markup=kb([[("« القائمة الرئيسية", "m:main")]]))
 
 
+@router.callback_query(F.data == "m:new_exam")
+@_admin_only_callback
+async def cb_new_exam(callback: CallbackQuery):
+    session = get_session()
+    try:
+        subjects = session.query(Subject).all()
+        rows = [[(s.name, f"m:new_exam_subj:{s.id}")] for s in subjects]
+        rows.append([("🌐 كل المواد", "m:new_exam_subj:all")])
+        rows.append([("« إلغاء", "m:exams")])
+        await callback.message.edit_text(
+            "اختار المادة عشان تختار منها الأسئلة (أو كل المواد):", reply_markup=kb(rows)
+        )
+    finally:
+        session.close()
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("m:new_exam_subj:"))
+@_admin_only_callback
+async def cb_new_exam_subj(callback: CallbackQuery):
+    raw = callback.data.split(":")[2]
+    subject_id = None if raw == "all" else int(raw)
+    PENDING[callback.from_user.id] = {"action": "new_exam_title", "subject_id": subject_id}
+    await callback.message.edit_text("اكتب عنوان الاختبار:", reply_markup=kb([[("« إلغاء", "m:exams")]]))
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("m:exam_edit:"))
+@_admin_only_callback
+async def cb_exam_edit(callback: CallbackQuery):
+    exam_id = int(callback.data.split(":")[2])
+    session = get_session()
+    try:
+        exam = session.query(Exam).filter_by(id=exam_id).first()
+        if not exam:
+            await callback.answer("الاختبار مش موجود.", show_alert=True)
+            return
+        PENDING[callback.from_user.id] = {
+            "action": "edit_exam_title",
+            "exam_id": exam_id,
+            "title": exam.title,
+            "time": exam.time_per_question,
+            "subject_id": exam.subject_id,
+            "selected": set(json.loads(exam.question_ids)),
+        }
+        await callback.message.edit_text(
+            f"العنوان الحالي: {exam.title}\n\nاكتب عنوان جديد، أو ابعت - عشان تسيبه زي ما هو:",
+            reply_markup=kb([[("« إلغاء", "m:exams")]]),
+        )
+    finally:
+        session.close()
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("m:exam_del:"))
+@_admin_only_callback
+async def cb_exam_del(callback: CallbackQuery):
+    exam_id = int(callback.data.split(":")[2])
+    session = get_session()
+    try:
+        exam = session.query(Exam).filter_by(id=exam_id).first()
+        if exam:
+            session.delete(exam)
+            session.commit()
+    finally:
+        session.close()
+    await callback.answer("تم الحذف ✅")
+    await cb_exams(callback)
+
+
+def render_exam_picker(user_id: int):
+    """بترجع (النص، الكيبورد) لقائمة اختيار الأسئلة وقت بناء/تعديل اختبار."""
+    pending = PENDING[user_id]
+    session = get_session()
+    try:
+        subject_id = pending.get("subject_id")
+        q_query = session.query(Question)
+        if subject_id:
+            q_query = q_query.filter_by(subject_id=subject_id)
+        questions = q_query.order_by(Question.id.desc()).limit(40).all()
+        rows = []
+        for q in questions:
+            checked = "✅" if q.id in pending["selected"] else "⬜"
+            rows.append([(f"{checked} {q.text[:40]}", f"m:examq_toggle:{q.id}")])
+        rows.append([(f"💾 حفظ ({len(pending['selected'])} سؤال)", "m:examq_save")])
+        rows.append([("« إلغاء", "m:exams")])
+        text = (
+            f"اختار الأسئلة (دوس تحدد/تشيل):\n"
+            f"العنوان: {pending['title']} — الوقت لكل سؤال: {pending['time']} ثانية"
+        )
+        return text, kb(rows)
+    finally:
+        session.close()
+
+
+@router.callback_query(F.data.startswith("m:examq_toggle:"))
+@_admin_only_callback
+async def cb_examq_toggle(callback: CallbackQuery):
+    question_id = int(callback.data.split(":")[2])
+    pending = PENDING.get(callback.from_user.id)
+    if not pending or pending.get("action") != "exam_picker":
+        await callback.answer("انتهت الجلسة، ابدأ تاني.", show_alert=True)
+        return
+    if question_id in pending["selected"]:
+        pending["selected"].remove(question_id)
+    else:
+        pending["selected"].add(question_id)
+    text, markup = render_exam_picker(callback.from_user.id)
+    await callback.message.edit_text(text, reply_markup=markup)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "m:examq_save")
+@_admin_only_callback
+async def cb_examq_save(callback: CallbackQuery):
+    pending = PENDING.get(callback.from_user.id)
+    if not pending or pending.get("action") != "exam_picker":
+        await callback.answer("انتهت الجلسة، ابدأ تاني.", show_alert=True)
+        return
+    if not pending["selected"]:
+        await callback.answer("لازم تختار سؤال واحد على الأقل.", show_alert=True)
+        return
+    q_ids = list(pending["selected"])
+    session = get_session()
+    try:
+        if pending["mode"] == "new":
+            session.add(Exam(
+                title=pending["title"], subject_id=pending.get("subject_id"),
+                question_ids=json.dumps(q_ids), time_per_question=pending["time"],
+            ))
+        else:
+            exam = session.query(Exam).filter_by(id=pending["exam_id"]).first()
+            if exam:
+                exam.title = pending["title"]
+                exam.question_ids = json.dumps(q_ids)
+                exam.time_per_question = pending["time"]
+        session.commit()
+    finally:
+        session.close()
+    PENDING.pop(callback.from_user.id, None)
+    await callback.message.edit_text(
+        f"✅ تم حفظ الاختبار ({len(q_ids)} سؤال).",
+        reply_markup=kb([[("« القائمة الرئيسية", "m:main")]]),
+    )
+    await callback.answer()
+
+
 # ---------------- الجدولة ----------------
 
 @router.callback_query(F.data == "m:schedule")
@@ -311,16 +558,15 @@ async def cb_schedule(callback: CallbackQuery):
     session = get_session()
     try:
         items = session.query(ScheduledMessage).filter_by(is_active=True).order_by(ScheduledMessage.id.desc()).limit(10).all()
-        lines = ["🗓 <b>الرسائل المجدولة النشطة:</b>\n"]
+        text = "🗓 <b>الرسائل المجدولة النشطة:</b>"
+        if not items:
+            text += "\n\nمفيش رسائل مجدولة حاليًا."
+        rows = [[("➕ رسالة جديدة", "m:add_schedule")]]
         for it in items:
             when = it.cron_expr or str(it.run_at)
-            lines.append(f"#{it.id} — {when} — {it.content[:30]}")
-        if not items:
-            lines.append("مفيش رسائل مجدولة حاليًا.")
-        await callback.message.edit_text(
-            "\n".join(lines),
-            reply_markup=kb([[("➕ رسالة جديدة", "m:add_schedule")], [("« رجوع", "m:main")]]),
-        )
+            rows.append([(f"#{it.id} — {when} — {it.content[:25]}", "m:noop"), ("🗑", f"m:sched_del:{it.id}")])
+        rows.append([("« رجوع", "m:main")])
+        await callback.message.edit_text(text, reply_markup=kb(rows))
     finally:
         session.close()
     await callback.answer()
@@ -387,6 +633,57 @@ async def cb_sched_when(callback: CallbackQuery):
     await callback.message.edit_text(
         f"✅ اتجدولت الرسالة، هتتبعت بعد {minutes} دقيقة.",
         reply_markup=kb([[("« القائمة الرئيسية", "m:main")]]),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("m:sched_del:"))
+@_admin_only_callback
+async def cb_sched_del(callback: CallbackQuery):
+    msg_id = int(callback.data.split(":")[2])
+    session = get_session()
+    try:
+        m = session.query(ScheduledMessage).filter_by(id=msg_id).first()
+        if m:
+            m.is_active = False
+            session.commit()
+    finally:
+        session.close()
+    await callback.answer("تم الإلغاء ✅")
+    await cb_schedule(callback)
+
+
+# ---------------- إرسال فوري (Broadcast) ----------------
+
+@router.callback_query(F.data == "m:broadcast")
+@_admin_only_callback
+async def cb_broadcast(callback: CallbackQuery):
+    session = get_session()
+    try:
+        groups = session.query(GroupSettings).all()
+        if not groups:
+            await callback.message.edit_text(
+                "لسه مفيش جروب مسجل.",
+                reply_markup=kb([[("« رجوع", "m:main")]]),
+            )
+            await callback.answer()
+            return
+        rows = [[(group_label(g), f"m:broadcast_group:{g.chat_id}")] for g in groups]
+        rows.append([("« رجوع", "m:main")])
+        await callback.message.edit_text("📢 ابعت فورًا لأي جروب؟", reply_markup=kb(rows))
+    finally:
+        session.close()
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("m:broadcast_group:"))
+@_admin_only_callback
+async def cb_broadcast_group(callback: CallbackQuery):
+    chat_id = int(callback.data.split(":")[2])
+    PENDING[callback.from_user.id] = {"action": "broadcast_content", "chat_id": chat_id}
+    await callback.message.edit_text(
+        "اكتب محتوى الرسالة اللي عايز تبعتها فورًا:",
+        reply_markup=kb([[("« إلغاء", "m:broadcast")]]),
     )
     await callback.answer()
 
@@ -463,15 +760,12 @@ async def cb_settings(callback: CallbackQuery):
     await callback.answer()
 
 
-@router.callback_query(F.data.startswith("m:group_settings:"))
-@_admin_only_callback
-async def cb_group_settings(callback: CallbackQuery):
-    chat_id = int(callback.data.split(":")[2])
+async def render_group_settings(callback: CallbackQuery, chat_id: int):
     session = get_session()
     try:
         g = session.query(GroupSettings).filter_by(chat_id=chat_id).first()
         if not g:
-            await callback.answer("الجروب مش موجود.", show_alert=True)
+            await callback.message.edit_text("الجروب مش موجود.", reply_markup=kb([[("« رجوع", "m:settings")]]))
             return
         text = (
             f"⚙️ <b>إعدادات {group_label(g)}</b>\n\n"
@@ -479,14 +773,46 @@ async def cb_group_settings(callback: CallbackQuery):
             f"👋 الترحيب:\n{g.welcome_text[:200]}\n\n"
             f"⚠️ حد التحذيرات: {g.max_warnings}"
         )
+        on, off = "✅", "⬜"
         rows = [
             [("✏️ تعديل القوانين", f"m:edit_rules:{chat_id}")],
             [("✏️ تعديل الترحيب", f"m:edit_welcome:{chat_id}")],
+            [(f"{on if g.welcome_enabled else off} الترحيب مفعّل", f"m:toggle:welcome_enabled:{chat_id}")],
+            [(f"{on if g.lock_links else off} قفل الروابط", f"m:toggle:lock_links:{chat_id}")],
+            [(f"{on if g.lock_forward else off} قفل التوجيه", f"m:toggle:lock_forward:{chat_id}")],
+            [(f"{on if g.lock_stickers else off} قفل الاستيكرات", f"m:toggle:lock_stickers:{chat_id}")],
+            [("🚫 الكلمات الممنوعة", f"m:filters:{chat_id}"), ("🗒 الملاحظات", f"m:notes:{chat_id}")],
+            [("⚠️ تحذيرات الطلاب", f"m:warnings:{chat_id}")],
             [("« رجوع", "m:settings")],
         ]
         await callback.message.edit_text(text, reply_markup=kb(rows))
     finally:
         session.close()
+
+
+@router.callback_query(F.data.startswith("m:group_settings:"))
+@_admin_only_callback
+async def cb_group_settings(callback: CallbackQuery):
+    chat_id = int(callback.data.split(":")[2])
+    await render_group_settings(callback, chat_id)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("m:toggle:"))
+@_admin_only_callback
+async def cb_toggle_setting(callback: CallbackQuery):
+    _, _, field, chat_id = callback.data.split(":")
+    chat_id = int(chat_id)
+    session = get_session()
+    try:
+        g = session.query(GroupSettings).filter_by(chat_id=chat_id).first()
+        if g:
+            setattr(g, field, not getattr(g, field))
+            session.commit()
+            log_action(chat_id, callback.from_user.id, callback.from_user.full_name, "lock" if getattr(g, field) else "unlock", details=field)
+    finally:
+        session.close()
+    await render_group_settings(callback, chat_id)
     await callback.answer()
 
 
@@ -509,6 +835,154 @@ async def cb_edit_welcome(callback: CallbackQuery):
         reply_markup=kb([[("« إلغاء", f"m:group_settings:{chat_id}")]]),
     )
     await callback.answer()
+
+
+# ---------------- الكلمات الممنوعة ----------------
+
+async def render_filters(callback: CallbackQuery, chat_id: int):
+    session = get_session()
+    try:
+        items = session.query(FilterWord).filter_by(chat_id=chat_id).all()
+        rows = [[("➕ إضافة", f"m:filter_add:{chat_id}")]]
+        for f in items:
+            rows.append([(f.trigger, "m:noop"), ("🗑", f"m:filter_del:{f.id}:{chat_id}")])
+        rows.append([("« رجوع", f"m:group_settings:{chat_id}")])
+        text = "🚫 <b>الكلمات الممنوعة</b>" if items else "🚫 <b>الكلمات الممنوعة</b>\n\nمفيش كلمات ممنوعة لسه."
+        await callback.message.edit_text(text, reply_markup=kb(rows))
+    finally:
+        session.close()
+
+
+@router.callback_query(F.data.startswith("m:filters:"))
+@_admin_only_callback
+async def cb_filters(callback: CallbackQuery):
+    chat_id = int(callback.data.split(":")[2])
+    await render_filters(callback, chat_id)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("m:filter_add:"))
+@_admin_only_callback
+async def cb_filter_add(callback: CallbackQuery):
+    chat_id = int(callback.data.split(":")[2])
+    PENDING[callback.from_user.id] = {"action": "add_filter_word", "chat_id": chat_id}
+    await callback.message.edit_text(
+        "اكتب الكلمة والرد (اختياري) بالشكل ده:\nالكلمة | الرد\n\nمثال:\nسبام | ممنوع السبام هنا",
+        reply_markup=kb([[("« إلغاء", f"m:filters:{chat_id}")]]),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("m:filter_del:"))
+@_admin_only_callback
+async def cb_filter_del(callback: CallbackQuery):
+    _, _, filter_id, chat_id = callback.data.split(":")
+    session = get_session()
+    try:
+        f = session.query(FilterWord).filter_by(id=int(filter_id)).first()
+        if f:
+            session.delete(f)
+            session.commit()
+            log_action(int(chat_id), callback.from_user.id, callback.from_user.full_name, "filter_del", details="من لوحة الخاص")
+    finally:
+        session.close()
+    await callback.answer("تم الحذف ✅")
+    await render_filters(callback, int(chat_id))
+
+
+# ---------------- الملاحظات ----------------
+
+async def render_notes(callback: CallbackQuery, chat_id: int):
+    session = get_session()
+    try:
+        items = session.query(Note).filter_by(chat_id=chat_id).all()
+        rows = [[("➕ إضافة", f"m:note_add:{chat_id}")]]
+        for n in items:
+            rows.append([(f"#{n.keyword}", "m:noop"), ("🗑", f"m:note_del:{n.id}:{chat_id}")])
+        rows.append([("« رجوع", f"m:group_settings:{chat_id}")])
+        text = "🗒 <b>الملاحظات المحفوظة</b>" if items else "🗒 <b>الملاحظات المحفوظة</b>\n\nمفيش ملاحظات لسه."
+        await callback.message.edit_text(text, reply_markup=kb(rows))
+    finally:
+        session.close()
+
+
+@router.callback_query(F.data.startswith("m:notes:"))
+@_admin_only_callback
+async def cb_notes_list(callback: CallbackQuery):
+    chat_id = int(callback.data.split(":")[2])
+    await render_notes(callback, chat_id)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("m:note_add:"))
+@_admin_only_callback
+async def cb_note_add(callback: CallbackQuery):
+    chat_id = int(callback.data.split(":")[2])
+    PENDING[callback.from_user.id] = {"action": "add_note", "chat_id": chat_id}
+    await callback.message.edit_text(
+        "اكتب الكلمة المفتاحية والمحتوى بالشكل ده:\nالكلمة | المحتوى\n\nمثال:\nمواعيد | الاختبار يوم الخميس الساعة ٦",
+        reply_markup=kb([[("« إلغاء", f"m:notes:{chat_id}")]]),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("m:note_del:"))
+@_admin_only_callback
+async def cb_note_del(callback: CallbackQuery):
+    _, _, note_id, chat_id = callback.data.split(":")
+    session = get_session()
+    try:
+        n = session.query(Note).filter_by(id=int(note_id)).first()
+        if n:
+            session.delete(n)
+            session.commit()
+            log_action(int(chat_id), callback.from_user.id, callback.from_user.full_name, "note_del", details="من لوحة الخاص")
+    finally:
+        session.close()
+    await callback.answer("تم الحذف ✅")
+    await render_notes(callback, int(chat_id))
+
+
+# ---------------- تحذيرات الطلاب ----------------
+
+async def render_warnings(callback: CallbackQuery, chat_id: int):
+    session = get_session()
+    try:
+        rows_data = session.query(Warning.user_id).filter_by(chat_id=chat_id).all()
+        counts = {}
+        for (user_id,) in rows_data:
+            counts[user_id] = counts.get(user_id, 0) + 1
+        rows = []
+        for user_id, count in counts.items():
+            rows.append([(f"{user_id} ({count} تحذير)", "m:noop"), ("🧹 مسح", f"m:warn_reset:{chat_id}:{user_id}")])
+        rows.append([("« رجوع", f"m:group_settings:{chat_id}")])
+        text = "⚠️ <b>تحذيرات الطلاب</b>" if counts else "⚠️ <b>تحذيرات الطلاب</b>\n\nمحدش عنده تحذيرات دلوقتي 🎉"
+        await callback.message.edit_text(text, reply_markup=kb(rows))
+    finally:
+        session.close()
+
+
+@router.callback_query(F.data.startswith("m:warnings:"))
+@_admin_only_callback
+async def cb_warnings(callback: CallbackQuery):
+    chat_id = int(callback.data.split(":")[2])
+    await render_warnings(callback, chat_id)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("m:warn_reset:"))
+@_admin_only_callback
+async def cb_warn_reset(callback: CallbackQuery):
+    _, _, chat_id, user_id = callback.data.split(":")
+    session = get_session()
+    try:
+        session.query(Warning).filter_by(chat_id=int(chat_id), user_id=int(user_id)).delete()
+        session.commit()
+        log_action(int(chat_id), callback.from_user.id, callback.from_user.full_name, "reset_warns", int(user_id), details="من لوحة الخاص")
+    finally:
+        session.close()
+    await callback.answer("تم المسح ✅")
+    await render_warnings(callback, int(chat_id))
 
 
 # ---------------- الإحصائيات ----------------
@@ -602,7 +1076,7 @@ ACTION_LABELS = {
     "kick": "👢 طرد", "warn": "⚠️ تحذير", "reset_warns": "🧹 مسح تحذيرات",
     "pin": "📌 تثبيت", "unpin": "📍 إلغاء تثبيت", "lock": "🔒 قفل", "unlock": "🔓 فتح",
     "filter_add": "🚫➕ إضافة كلمة ممنوعة", "filter_del": "🚫➖ حذف كلمة ممنوعة",
-    "note_add": "🗒➕ إضافة ملاحظة", "note_del": "🗒➖ حذف ملاحظة",
+    "note_add": "🗒➕ إضافة ملاحظة", "note_del": "🗒➖ حذف ملاحظة", "broadcast": "📢 إرسال فوري",
 }
 
 
@@ -697,6 +1171,141 @@ def has_pending_action(message: Message) -> bool:
 async def handle_pending_text(message: Message):
     pending = PENDING.get(message.from_user.id)
     action = pending["action"]
+
+    if action == "new_exam_title":
+        PENDING[message.from_user.id] = {**pending, "action": "new_exam_time", "title": message.text.strip()}
+        await message.answer("اكتب الوقت المسموح لكل سؤال بالثواني (مثال: 30):")
+        return
+
+    if action == "new_exam_time":
+        if not message.text.strip().isdigit():
+            await message.answer("اكتب رقم صحيح بالثواني.")
+            return
+        PENDING[message.from_user.id] = {
+            **pending, "action": "exam_picker", "mode": "new",
+            "time": int(message.text.strip()), "selected": set(),
+        }
+        text, markup = render_exam_picker(message.from_user.id)
+        await message.answer(text, reply_markup=markup)
+        return
+
+    if action == "edit_exam_title":
+        new_title = pending["title"] if message.text.strip() == "-" else message.text.strip()
+        PENDING[message.from_user.id] = {**pending, "action": "edit_exam_time", "title": new_title}
+        await message.answer(f"الوقت الحالي: {pending['time']} ثانية\n\nاكتب وقت جديد بالثواني، أو ابعت - عشان تسيبه زي ما هو:")
+        return
+
+    if action == "edit_exam_time":
+        if message.text.strip() == "-":
+            new_time = pending["time"]
+        elif message.text.strip().isdigit():
+            new_time = int(message.text.strip())
+        else:
+            await message.answer("اكتب رقم صحيح أو -.")
+            return
+        PENDING[message.from_user.id] = {**pending, "action": "exam_picker", "mode": "edit", "time": new_time}
+        text, markup = render_exam_picker(message.from_user.id)
+        await message.answer(text, reply_markup=markup)
+        return
+
+    if action == "q_text":
+        PENDING[message.from_user.id] = {**pending, "action": "q_options", "text": message.text.strip()}
+        await message.answer("اكتب الاختيارات، كل اختيار في سطر لوحده (اختيارين على الأقل):")
+        return
+
+    if action == "q_options":
+        options = [line.strip() for line in message.text.split("\n") if line.strip()]
+        if len(options) < 2:
+            await message.answer("لازم اختيارين على الأقل، كل واحد في سطر.")
+            return
+        PENDING[message.from_user.id] = {**pending, "action": "q_correct", "options": options}
+        opts_list = "\n".join(f"{i}) {o}" for i, o in enumerate(options))
+        await message.answer(f"{opts_list}\n\nاكتب رقم الإجابة الصحيحة (0 = الأول):")
+        return
+
+    if action == "q_correct":
+        if not message.text.strip().isdigit() or int(message.text.strip()) >= len(pending["options"]):
+            await message.answer(f"اكتب رقم من 0 لـ {len(pending['options']) - 1}.")
+            return
+        PENDING[message.from_user.id] = {**pending, "action": "q_explanation", "correct_index": int(message.text.strip())}
+        await message.answer("اكتب شرح الإجابة (أو ابعت - لتجاهله):")
+        return
+
+    if action == "q_explanation":
+        explanation = "" if message.text.strip() == "-" else message.text.strip()
+        PENDING[message.from_user.id] = {**pending, "action": "q_difficulty", "explanation": explanation}
+        await message.answer("اكتب مستوى الصعوبة (easy / medium / hard)، أو ابعت - للمتوسط:")
+        return
+
+    if action == "q_difficulty":
+        raw = message.text.strip().lower()
+        difficulty = raw if raw in ("easy", "medium", "hard") else "medium"
+        session = get_session()
+        try:
+            if pending["mode"] == "new":
+                session.add(Question(
+                    subject_id=pending["subject_id"], text=pending["text"],
+                    options=json.dumps(pending["options"], ensure_ascii=False),
+                    correct_index=pending["correct_index"], explanation=pending["explanation"],
+                    difficulty=difficulty,
+                ))
+            else:
+                q = session.query(Question).filter_by(id=pending["question_id"]).first()
+                if q:
+                    q.text = pending["text"]
+                    q.options = json.dumps(pending["options"], ensure_ascii=False)
+                    q.correct_index = pending["correct_index"]
+                    q.explanation = pending["explanation"]
+                    q.difficulty = difficulty
+            session.commit()
+        finally:
+            session.close()
+        PENDING.pop(message.from_user.id, None)
+        await message.answer("✅ تم حفظ السؤال.", reply_markup=kb([[("« القائمة الرئيسية", "m:main")]]))
+        return
+
+    if action == "add_filter_word":
+        parts = message.text.split("|", maxsplit=1)
+        trigger = parts[0].strip().lower()
+        reply = parts[1].strip() if len(parts) > 1 else ""
+        if not trigger:
+            await message.answer("اكتب الكلمة على الأقل، بالشكل: الكلمة | الرد")
+            return
+        session = get_session()
+        try:
+            session.add(FilterWord(chat_id=pending["chat_id"], trigger=trigger, reply=reply))
+            session.commit()
+            log_action(pending["chat_id"], message.from_user.id, message.from_user.full_name, "filter_add", details=trigger)
+        finally:
+            session.close()
+        PENDING.pop(message.from_user.id, None)
+        await message.answer(f"✅ تمت إضافة الكلمة الممنوعة: {trigger}", reply_markup=kb([[("« القائمة الرئيسية", "m:main")]]))
+        return
+
+    if action == "add_note":
+        parts = message.text.split("|", maxsplit=1)
+        if len(parts) < 2 or not parts[0].strip():
+            await message.answer("اكتب بالشكل: الكلمة | المحتوى")
+            return
+        keyword, content = parts[0].strip().lower(), parts[1].strip()
+        session = get_session()
+        try:
+            session.query(Note).filter_by(chat_id=pending["chat_id"], keyword=keyword).delete()
+            session.add(Note(chat_id=pending["chat_id"], keyword=keyword, content=content))
+            session.commit()
+            log_action(pending["chat_id"], message.from_user.id, message.from_user.full_name, "note_add", details=keyword)
+        finally:
+            session.close()
+        PENDING.pop(message.from_user.id, None)
+        await message.answer(f"✅ تم حفظ الملاحظة: #{keyword}", reply_markup=kb([[("« القائمة الرئيسية", "m:main")]]))
+        return
+
+    if action == "broadcast_content":
+        await message.bot.send_message(pending["chat_id"], message.text)
+        log_action(pending["chat_id"], message.from_user.id, message.from_user.full_name, "broadcast", details=message.text[:40])
+        PENDING.pop(message.from_user.id, None)
+        await message.answer("✅ اتبعتت الرسالة فورًا.", reply_markup=kb([[("« القائمة الرئيسية", "m:main")]]))
+        return
 
     if action == "add_subject":
         session = get_session()
