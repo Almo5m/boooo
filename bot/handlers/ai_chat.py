@@ -1,7 +1,9 @@
 import re
 from aiogram import Router
 from aiogram.types import Message
+from aiogram.exceptions import TelegramBadRequest
 from bot.ai_engine import get_ai_reply, BOT_PERSONA_NAME
+from bot.formatting import format_ai_reply, to_plain
 
 router = Router()
 
@@ -48,8 +50,24 @@ async def is_ai_trigger(message: Message) -> bool:
     return _is_greeting(message.text) or _is_direct_question(message.text)
 
 
+TELEGRAM_LIMIT = 4000  # الحد الفعلي 4096، وسايبين هامش أمان
+
+
 @router.message(is_ai_trigger)
 async def ai_chat_reply(message: Message):
     await message.bot.send_chat_action(message.chat.id, "typing")
-    reply = await get_ai_reply(message.chat.id, message.from_user.full_name, message.text)
-    await message.reply(reply)
+    raw_reply = await get_ai_reply(message.chat.id, message.from_user.full_name, message.text)
+    formatted = format_ai_reply(raw_reply)
+
+    # رد طويل: بنبعته نص عادي مقسّم عشان وسوم HTML مايتقطعش نصها
+    if len(formatted) > TELEGRAM_LIMIT:
+        plain = to_plain(formatted)
+        for i in range(0, len(plain), TELEGRAM_LIMIT):
+            await message.reply(plain[i:i + TELEGRAM_LIMIT], parse_mode=None)
+        return
+
+    try:
+        await message.reply(formatted)
+    except TelegramBadRequest:
+        # لو تليجرام مقدرش يقرا التنسيق لأي سبب، نبعت الرد كنص عادي بدل ما الطالب مايستلمش حاجة
+        await message.reply(to_plain(formatted), parse_mode=None)
